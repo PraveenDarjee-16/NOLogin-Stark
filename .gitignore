@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Next.js Build Output
+.next/
+out/
+build/
+dist/
+
+# Environment Variables (Keep Private!)
+.env*.local
+.env
+
+# Vercel
+.vercel/
+
+# User Uploaded Cloud Storage Binaries (Do not commit large video/image files to Git)
+data/storage/
+*.mp4
+*.webm
+
+# Logs & Temporary Debug Files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+cookie.txt
+cookies.txt
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/

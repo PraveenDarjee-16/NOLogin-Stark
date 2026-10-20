@@ -1,0 +1,106 @@
+{
+  "files": [],
+  "folders": [
+    {
+      "id": "system-documents",
+      "name": "Documents",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "documents",
+      "icon": "file-text",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-photos",
+      "name": "Photos",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "photos",
+      "icon": "image",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-videos",
+      "name": "Videos",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "videos",
+      "icon": "film",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-music",
+      "name": "Music",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "music",
+      "icon": "music",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-downloads",
+      "name": "Downloads",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "downloads",
+      "icon": "download",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-other",
+      "name": "Other Files",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "other",
+      "icon": "archive",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-recent",
+      "name": "Recently Uploaded",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "recent",
+      "icon": "clock",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-favorites",
+      "name": "Favourites",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "favorites",
+      "icon": "star",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "system-trash",
+      "name": "Trash",
+      "parentId": null,
+      "isSystem": true,
+      "systemType": "trash",
+      "icon": "trash-2",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    }
+  ],
+  "preferences": {
+    "theme": "jarvis-cyan",
+    "wallpaperType": "spiderman-city",
+    "wallpaperBrightness": 0.85,
+    "hologramOpacity": 65,
+    "hologramAmount": 75,
+    "storageCapacityGB": 15,
+    "desktopLayout": "grid"
+  },
+  "version": 1,
+  "notes": []
+}

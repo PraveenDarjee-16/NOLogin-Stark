@@ -1,0 +1,465 @@
+.hologram-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: var(--hologram-opacity);
+  transition: opacity 0.25s ease;
+}
+
+/* Digital Grid Background */
+.holo-grid {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(to right, rgba(var(--accent-cyan-rgb), 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(var(--accent-cyan-rgb), 0.08) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(circle at center, black 40%, transparent 85%);
+  -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 85%);
+}
+
+/* Central HUD Reticle / Rotating Rings */
+.holo-rings-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 580px;
+  height: 580px;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.holo-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(var(--accent-cyan-rgb), 0.22);
+}
+
+.holo-ring-outer {
+  border: 1px dashed rgba(var(--accent-cyan-rgb), 0.3);
+  animation: spinSlow 50s linear infinite;
+}
+
+.holo-ring-inner {
+  inset: 70px;
+  border: 1.5px solid rgba(var(--accent-cyan-rgb), 0.2);
+  border-top-color: var(--accent-cyan);
+  border-bottom-color: var(--accent-red);
+  animation: spinReverse 35s linear infinite;
+}
+
+.holo-ring-core {
+  inset: 160px;
+  border: 1px dotted rgba(var(--accent-cyan-rgb), 0.4);
+  animation: spinSlow 20s linear infinite;
+}
+
+/* Corner Telemetry HUD */
+.holo-telemetry-corner {
+  position: absolute;
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: rgba(var(--accent-cyan-rgb), 0.65);
+  letter-spacing: 0.1em;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+}
+
+.holo-corner-top-left {
+  top: 50px;
+  left: 20px;
+}
+
+.holo-corner-top-right {
+  top: 50px;
+  right: 20px;
+  text-align: right;
+}
+
+.holo-corner-bottom-left {
+  bottom: 80px;
+  left: 20px;
+}
+
+.holo-corner-bottom-right {
+  bottom: 80px;
+  right: 20px;
+  text-align: right;
+}
+
+/* Holographic Floating Particles Canvas */
+.holo-particles-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Web / Spider-Man accent crosshair */
+.holo-crosshair {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+}
+.holo-crosshair::before,
+.holo-crosshair::after {
+  content: '';
+  position: absolute;
+  background: var(--accent-cyan);
+}
+.holo-crosshair::before {
+  top: 11px;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+.holo-crosshair::after {
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+
+/* ========================================================
+   CRAZY MODE CINEMATIC SEQUENCES (CASE 1 & CASE 2)
+   ======================================================== */
+
+/* General Crazy Core Pulse */
+@keyframes crazyPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.96);
+    filter: drop-shadow(0 0 15px rgba(var(--accent-cyan-rgb), 0.6)) brightness(1.2);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.12);
+    filter: drop-shadow(0 0 50px rgba(var(--accent-cyan-rgb), 1)) drop-shadow(0 0 70px rgba(var(--accent-red-rgb), 0.7)) brightness(2.2);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.02);
+    filter: drop-shadow(0 0 30px rgba(var(--accent-cyan-rgb), 0.8)) brightness(1.5);
+  }
+}
+
+/* Suction Implosion Pulse for Case 1 */
+@keyframes crazySuctionPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.9);
+    filter: drop-shadow(0 0 20px #00f0ff) brightness(1.5);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.18);
+    filter: drop-shadow(0 0 60px #00f0ff) drop-shadow(0 0 90px #38bdf8) brightness(2.8);
+  }
+}
+
+/* High Speed Shockwaves */
+@keyframes crazyShockwave {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.95;
+    border-width: 4px;
+  }
+  60% {
+    opacity: 0.7;
+    border-width: 2px;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.8);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+/* High-speed Scanning Beams */
+@keyframes crazyScanHorizontal {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(120vh);
+    opacity: 0;
+  }
+}
+
+@keyframes crazyScanDiagonal {
+  0% {
+    transform: translateY(-100%) rotate(-30deg);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(160%) rotate(-30deg);
+    opacity: 0;
+  }
+}
+
+/* Spider-Man Inspired Red & Blue Energy Flashes */
+@keyframes crazySpideyFlash {
+  0%, 100% {
+    opacity: 0;
+  }
+  20% {
+    background: radial-gradient(circle at center, rgba(239, 68, 68, 0.22) 0%, transparent 70%);
+    opacity: 0.8;
+  }
+  40% {
+    opacity: 0.1;
+  }
+  60% {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.25) 0%, rgba(37, 99, 235, 0.2) 50%, transparent 75%);
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 0.15;
+  }
+  90% {
+    background: radial-gradient(circle at center, rgba(239, 68, 68, 0.3) 0%, rgba(0, 240, 255, 0.25) 60%, transparent 80%);
+    opacity: 0.85;
+  }
+}
+
+/* Digital Grid 3D Perspective Wave Distortion */
+@keyframes crazyGridPerspective {
+  0% {
+    transform: perspective(700px) rotateX(0deg) scale(1);
+    opacity: 0.5;
+  }
+  35% {
+    transform: perspective(700px) rotateX(12deg) scale(1.04);
+    opacity: 0.9;
+    filter: hue-rotate(25deg);
+  }
+  70% {
+    transform: perspective(700px) rotateX(-8deg) scale(0.98);
+    opacity: 0.85;
+    filter: hue-rotate(-25deg);
+  }
+  100% {
+    transform: perspective(700px) rotateX(0deg) scale(1);
+    opacity: 0.5;
+  }
+}
+
+/* Final Bright Reactor Energy Pulse */
+@keyframes crazyFinalBurst {
+  0% {
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  80% {
+    transform: translate(-50%, -50%) scale(3.5);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(5);
+    opacity: 0;
+  }
+}
+
+/* Energy Streaks Flying to Center */
+@keyframes energyStreakFly {
+  0% {
+    transform: rotate(var(--angle, 0deg)) translateY(calc(min(50vw, 50vh))) scaleY(2);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: rotate(var(--angle, 0deg)) translateY(0px) scaleY(0.2);
+    opacity: 0;
+  }
+}
+
+/* Active Ring Styling in Crazy Mode */
+.crazy-mode-active .holo-rings-container {
+  animation: crazyPulse 0.4s ease-in-out infinite alternate !important;
+}
+
+.crazy-case1-active .holo-rings-container {
+  animation: crazySuctionPulse 0.25s ease-in-out infinite alternate !important;
+}
+
+.crazy-mode-active .holo-ring-outer {
+  animation: spinSlow 3s linear infinite !important;
+  border-color: rgba(var(--accent-cyan-rgb), 0.95) !important;
+  box-shadow: 0 0 25px rgba(var(--accent-cyan-rgb), 0.6);
+}
+
+.crazy-mode-active .holo-ring-inner {
+  animation: spinReverse 1.8s linear infinite !important;
+  border-top-color: #ffffff !important;
+  border-bottom-color: var(--accent-red) !important;
+  box-shadow: 0 0 25px rgba(var(--accent-red-rgb), 0.5);
+}
+
+.crazy-mode-active .holo-ring-core {
+  animation: spinSlow 1.2s linear infinite !important;
+  border-color: #38bdf8 !important;
+  border-width: 2px !important;
+}
+
+/* Shockwaves */
+.crazy-shockwave {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-cyan);
+  pointer-events: none;
+  box-shadow: 0 0 40px var(--accent-cyan), inset 0 0 25px var(--accent-cyan);
+  animation: crazyShockwave 1.6s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+}
+
+.crazy-shockwave-2 {
+  animation-delay: 0.5s !important;
+  border-color: var(--accent-red);
+  box-shadow: 0 0 40px var(--accent-red), inset 0 0 25px var(--accent-red);
+}
+
+.crazy-shockwave-3 {
+  animation-delay: 1.0s !important;
+  border-color: #38bdf8;
+  box-shadow: 0 0 40px #38bdf8, inset 0 0 25px #38bdf8;
+}
+
+.crazy-shockwave-4 {
+  animation-delay: 1.4s !important;
+  border-color: #ffffff;
+  box-shadow: 0 0 50px #ffffff, inset 0 0 30px #00f0ff;
+}
+
+/* Scanning Beams */
+.crazy-scan-horizontal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 240, 255, 0.4) 20%,
+    #ffffff 50%,
+    rgba(0, 240, 255, 0.4) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 25px #00f0ff, 0 0 50px rgba(0, 240, 255, 0.8);
+  pointer-events: none;
+  animation: crazyScanHorizontal 1.8s ease-in-out infinite;
+}
+
+.crazy-scan-horizontal-2 {
+  animation-delay: 0.9s !important;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(239, 68, 68, 0.4) 20%,
+    #ffffff 50%,
+    rgba(56, 189, 248, 0.4) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 25px var(--accent-red);
+}
+
+.crazy-scan-diagonal {
+  position: absolute;
+  top: -40%;
+  left: -20%;
+  width: 140%;
+  height: 180px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(var(--accent-cyan-rgb), 0.25),
+    rgba(255, 255, 255, 0.5),
+    rgba(var(--accent-red-rgb), 0.25),
+    transparent
+  );
+  pointer-events: none;
+  animation: crazyScanDiagonal 2.2s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+/* Perspective Grid Distortion */
+.crazy-perspective-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: crazyGridPerspective 3.6s ease-in-out infinite;
+}
+
+/* Spider-Man Theme Ambient Flashes */
+.crazy-spidey-flashes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: crazySpideyFlash 3.8s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+/* Energy Streaks (Case 1 Suction) */
+.crazy-energy-streak {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 240px;
+  background: linear-gradient(to top, #00f0ff, transparent);
+  box-shadow: 0 0 15px #00f0ff;
+  pointer-events: none;
+  transform-origin: center top;
+  animation: energyStreakFly 0.85s cubic-bezier(0.1, 0.7, 0.1, 1) infinite;
+}
+
+/* Final Climax Energy Flash */
+.crazy-final-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0%, rgba(0, 240, 255, 0.8) 40%, rgba(37, 99, 235, 0.4) 70%, transparent 100%);
+  pointer-events: none;
+  animation: crazyFinalBurst 1.2s ease-out forwards;
+  mix-blend-mode: screen;
+}
+
+/* Reduced Motion Fallback */
+@media (prefers-reduced-motion: reduce) {
+  .crazy-mode-active .holo-rings-container,
+  .crazy-case1-active .holo-rings-container {
+    animation: none !important;
+  }
+  .crazy-shockwave,
+  .crazy-scan-horizontal,
+  .crazy-scan-diagonal,
+  .crazy-perspective-grid,
+  .crazy-spidey-flashes,
+  .crazy-energy-streak,
+  .crazy-final-burst {
+    animation: none !important;
+    display: none !important;
+  }
+}

@@ -1,0 +1,457 @@
+.desktop-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  perspective: 1000px;
+  background-color: var(--bg-space);
+}
+
+/* Wallpaper layer */
+.desktop-wallpaper-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  filter: brightness(var(--wallpaper-brightness));
+  transition: filter 0.3s ease;
+}
+
+/* Hologram Layer */
+.desktop-hologram-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Telemetry Header */
+.telemetry-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: rgba(3, 8, 20, 0.75);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-hud);
+  font-family: var(--font-hud);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--accent-cyan);
+}
+
+.telemetry-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 10px rgba(var(--accent-cyan-rgb), 0.6);
+}
+
+.telemetry-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: rgba(var(--accent-cyan-rgb), 0.1);
+  border: 1px solid var(--border-hud);
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+}
+
+.status-dot-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+  animation: holoPulse 2s infinite ease-in-out;
+}
+
+.telemetry-metrics {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.telemetry-metric-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.telemetry-metric-value {
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Balanced Desktop Shortcuts Layout: 5 on Left, 5 on Right, Central Reactor Void */
+.desktop-shortcuts-wrapper {
+  position: absolute;
+  top: 52px;
+  left: 0;
+  right: 0;
+  bottom: 64px;
+  padding: 16px 40px;
+  z-index: 15;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+
+.shortcuts-column-left,
+.shortcuts-column-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 104px;
+  pointer-events: auto;
+  z-index: 20;
+}
+
+.shortcuts-column-right {
+  align-items: flex-end;
+}
+
+.shortcuts-center-void {
+  flex: 1;
+  min-width: 260px;
+  pointer-events: none;
+}
+
+/* Tablet Layout (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .desktop-shortcuts-wrapper {
+    padding: 14px 20px;
+  }
+  .shortcuts-column-left,
+  .shortcuts-column-right {
+    width: 96px;
+    gap: 10px;
+  }
+  .shortcuts-center-void {
+    min-width: 160px;
+  }
+  .desktop-icon-card {
+    padding: 8px 6px;
+    min-height: 50px;
+  }
+  .telemetry-metrics {
+    gap: 10px;
+  }
+}
+
+/* Mobile Launcher Layout (< 768px) */
+@media (max-width: 767px) {
+  .telemetry-header {
+    padding: 0 8px;
+    height: 44px;
+    font-size: 0.72rem;
+  }
+  .telemetry-brand {
+    gap: 6px;
+    font-size: 0.76rem;
+  }
+  .telemetry-status-badge {
+    display: none;
+  }
+  .telemetry-metrics {
+    gap: 8px;
+  }
+  .telemetry-metrics .telemetry-metric-item:nth-child(2) {
+    display: none; /* Hide ID on small screens */
+  }
+
+  /* Two-column responsive launcher grid on mobile */
+  .desktop-shortcuts-wrapper {
+    top: 48px;
+    bottom: 64px;
+    left: 0;
+    right: 0;
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    align-content: start;
+    justify-content: stretch;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    pointer-events: auto;
+  }
+
+  .shortcuts-column-left,
+  .shortcuts-column-right {
+    display: contents; /* Unwraps children into the 2-column grid */
+  }
+
+  .shortcuts-center-void {
+    display: none;
+  }
+
+  /* Mobile touch-friendly shortcut card */
+  .desktop-icon-card {
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    min-height: 52px;
+    width: 100%;
+    background: rgba(4, 14, 34, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(0, 240, 255, 0.22);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    touch-action: manipulation;
+  }
+
+  .desktop-icon-card:active {
+    background: rgba(0, 240, 255, 0.22);
+    border-color: var(--accent-cyan);
+    transform: scale(0.98);
+  }
+
+  .desktop-icon-symbol {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+
+  .desktop-icon-symbol svg {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  .desktop-icon-name {
+    font-size: 0.76rem;
+    text-align: left;
+    max-width: none;
+    white-space: normal;
+    word-break: break-word;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  }
+}
+
+/* Mobile Landscape (4 columns) */
+@media (max-width: 767px) and (orientation: landscape) {
+  .desktop-shortcuts-wrapper {
+    grid-template-columns: repeat(4, 1fr);
+    padding: 8px 10px;
+    gap: 6px;
+    bottom: 56px;
+  }
+  .desktop-icon-card {
+    min-height: 44px;
+    padding: 6px 10px;
+  }
+}
+
+/* Very narrow mobile screens (< 480px) */
+@media (max-width: 480px) {
+  .telemetry-metrics .telemetry-metric-item:nth-child(1) {
+    display: none; /* Hide storage text on ultra-narrow phones */
+  }
+  .crazy-btn {
+    padding: 3px 6px;
+    font-size: 0.68rem;
+  }
+  .desktop-taskbar {
+    bottom: 6px;
+    height: 46px;
+    padding: 3px 6px;
+    gap: 4px;
+    max-width: calc(100vw - 12px);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .desktop-taskbar::-webkit-scrollbar {
+    display: none;
+  }
+  .taskbar-btn {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+}
+
+/* CRAZY Button Styling */
+.crazy-btn {
+  font-family: var(--font-hud);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(0, 240, 255, 0.25));
+  border: 1px solid rgba(0, 240, 255, 0.6);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+.crazy-btn:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.5), rgba(0, 240, 255, 0.5));
+  border-color: #fff;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.6), 0 0 25px rgba(0, 240, 255, 0.6);
+  transform: scale(1.05);
+}
+
+.crazy-btn.active {
+  background: linear-gradient(135deg, #ef4444, #00f0ff);
+  color: #030712;
+  font-weight: 800;
+  border-color: #fff;
+  box-shadow: 0 0 20px #00f0ff, 0 0 30px #ef4444;
+  animation: crazyBtnPulse 0.4s infinite alternate;
+}
+
+@keyframes crazyBtnPulse {
+  0% { transform: scale(1); filter: brightness(1.2); }
+  100% { transform: scale(1.08); filter: brightness(1.8); }
+}
+
+/* Desktop Folder Icon */
+.desktop-icon-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+  outline: none;
+}
+
+.desktop-icon-card:hover {
+  background: rgba(var(--accent-cyan-rgb), 0.12);
+  border-color: var(--border-hud);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), var(--glow-subtle);
+  transform: translateY(-4px) scale(1.04);
+}
+
+.desktop-icon-card.selected {
+  background: rgba(var(--accent-cyan-rgb), 0.24);
+  border-color: var(--border-hud-bright);
+  box-shadow: var(--glow-cyan);
+}
+
+.desktop-icon-symbol {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 8px;
+  color: var(--accent-cyan);
+  filter: drop-shadow(0 0 10px rgba(var(--accent-cyan-rgb), 0.45));
+  transition: transform 0.2s ease;
+}
+
+.desktop-icon-card:hover .desktop-icon-symbol {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 14px rgba(var(--accent-cyan-rgb), 0.7));
+}
+
+.desktop-icon-name {
+  font-size: 0.78rem;
+  font-family: var(--font-hud);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--text-main);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+  max-width: 96px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Taskbar / Dock */
+.desktop-taskbar {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 52px;
+  padding: 4px 12px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(4, 12, 28, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-hud);
+  border-radius: var(--radius-full);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), var(--glow-subtle);
+}
+
+.taskbar-btn {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.taskbar-btn:hover {
+  color: var(--accent-cyan);
+  background: rgba(var(--accent-cyan-rgb), 0.18);
+  border-color: var(--border-hud);
+  box-shadow: 0 0 16px rgba(var(--accent-cyan-rgb), 0.35);
+  transform: translateY(-3px) scale(1.1);
+}
+
+.taskbar-btn.active {
+  color: #ffffff;
+  background: rgba(var(--accent-cyan-rgb), 0.28);
+  border-color: var(--border-hud-bright);
+  box-shadow: var(--glow-cyan);
+}
+
+.taskbar-btn-indicator {
+  position: absolute;
+  bottom: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px var(--accent-cyan);
+}
+
+.taskbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-hud);
+  margin: 0 4px;
+}

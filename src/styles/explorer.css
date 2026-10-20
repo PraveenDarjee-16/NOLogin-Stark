@@ -1,0 +1,319 @@
+.explorer-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+/* Explorer Toolbar */
+.explorer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(4, 12, 28, 0.85);
+  border-bottom: 1px solid var(--border-hud);
+  flex-wrap: wrap;
+}
+
+.explorer-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.explorer-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-hud);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 4px 8px;
+  background: rgba(2, 6, 20, 0.6);
+  border: 1px solid rgba(var(--accent-cyan-rgb), 0.15);
+  border-radius: var(--radius-sm);
+  flex: 1;
+}
+
+.breadcrumb-item {
+  cursor: pointer;
+  color: var(--accent-cyan);
+  transition: color 0.15s ease;
+}
+.breadcrumb-item:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+.breadcrumb-item.active {
+  color: var(--text-main);
+  cursor: default;
+  text-decoration: none;
+}
+
+.explorer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Explorer Container: Sidebar + File Area */
+.explorer-split-view {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Sidebar */
+.explorer-sidebar {
+  width: 210px;
+  min-width: 210px;
+  background: rgba(3, 9, 22, 0.7);
+  border-right: 1px solid var(--border-hud);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.sidebar-section-title {
+  font-family: var(--font-hud);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  padding: 4px 8px;
+}
+
+.sidebar-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  border: 1px solid transparent;
+}
+
+.sidebar-folder-item:hover {
+  background: rgba(var(--accent-cyan-rgb), 0.12);
+  color: #fff;
+  border-color: rgba(var(--accent-cyan-rgb), 0.2);
+}
+
+.sidebar-folder-item.active {
+  background: rgba(var(--accent-cyan-rgb), 0.22);
+  color: var(--accent-cyan);
+  border-color: var(--border-hud);
+  font-weight: 500;
+}
+
+/* Main File Area */
+.explorer-file-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* File Grid */
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
+}
+
+.file-item-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px 10px;
+  background: rgba(6, 18, 42, 0.45);
+  border: 1px solid rgba(var(--accent-cyan-rgb), 0.16);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.file-item-card:hover {
+  background: rgba(var(--accent-cyan-rgb), 0.15);
+  border-color: var(--border-hud-bright);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), var(--glow-subtle);
+  transform: translateY(-2px);
+}
+
+.file-item-card.selected {
+  background: rgba(var(--accent-cyan-rgb), 0.28);
+  border-color: var(--accent-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.file-icon-box {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  color: var(--accent-cyan);
+  position: relative;
+}
+
+.file-name-text {
+  font-size: 0.78rem;
+  color: var(--text-main);
+  text-align: center;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.file-meta-text {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+/* Dropzone Overlay */
+.dropzone-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 10, 28, 0.88);
+  border: 2px dashed var(--accent-cyan);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 50;
+  backdrop-filter: blur(8px);
+  color: var(--accent-cyan);
+  font-family: var(--font-hud);
+  animation: holoPulse 1.5s infinite;
+}
+
+/* Empty State */
+.explorer-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+  padding: 40px 20px;
+  color: var(--text-dim);
+  font-family: var(--font-hud);
+  text-align: center;
+  gap: 12px;
+}
+
+/* Responsive Explorer Styles for Tablets and Mobile Devices */
+@media (max-width: 767px) {
+  .explorer-split-view {
+    flex-direction: column;
+  }
+
+  .explorer-sidebar {
+    width: 100%;
+    min-width: 100%;
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border-hud);
+    padding: 4px 8px;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+    background: rgba(3, 9, 22, 0.9);
+  }
+
+  .explorer-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar-section-title {
+    display: none;
+  }
+
+  .sidebar-folder-item {
+    padding: 6px 12px;
+    font-size: 0.74rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-full);
+    background: rgba(4, 14, 32, 0.7);
+    border: 1px solid rgba(var(--accent-cyan-rgb), 0.2);
+    gap: 6px;
+  }
+
+  .sidebar-folder-item.active {
+    background: rgba(var(--accent-cyan-rgb), 0.28);
+    border-color: var(--accent-cyan);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(var(--accent-cyan-rgb), 0.35);
+  }
+
+  .explorer-toolbar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .explorer-nav-group {
+    min-width: 120px;
+  }
+
+  .explorer-breadcrumbs {
+    font-size: 0.7rem;
+    padding: 3px 6px;
+  }
+
+  .explorer-file-area {
+    padding: 8px;
+  }
+
+  .file-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .file-item-card {
+    padding: 10px 6px 8px;
+  }
+
+  .file-item-card .window-control-btn {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .explorer-sidebar {
+    width: 175px;
+    min-width: 175px;
+  }
+  .file-grid {
+    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
+    gap: 12px;
+  }
+}
+

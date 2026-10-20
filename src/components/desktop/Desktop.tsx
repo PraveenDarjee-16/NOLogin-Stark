@@ -26,6 +26,7 @@ import VideoPlayerWindow from '../previews/VideoPlayerWindow';
 import AudioPlayerWindow from '../previews/AudioPlayerWindow';
 import DocumentViewerWindow from '../previews/DocumentViewerWindow';
 import SpiderWebRecallOverlay from './SpiderWebRecallOverlay';
+import { saveClientPreferences, getClientPreferences } from '@/lib/client-storage';
 
 interface Props {
   username: string;
@@ -88,27 +89,55 @@ export default function Desktop({ username, onLogout }: Props) {
 
   // Fetch initial preferences, folders, and storage stats
   const fetchPreferences = async () => {
+    // 1. Instantly apply cached client preferences to avoid theme/wallpaper flash or Vercel resets
+    const cached = getClientPreferences();
+    if (cached) {
+      setPreferences((prev) => ({ ...prev, ...cached }));
+      if (cached.theme) document.documentElement.setAttribute('data-theme', cached.theme);
+      if (cached.hologramOpacity !== undefined) {
+        document.documentElement.style.setProperty(
+          '--hologram-opacity',
+          (cached.hologramOpacity / 100).toString()
+        );
+      }
+      if (cached.hologramAmount !== undefined) {
+        document.documentElement.style.setProperty(
+          '--hologram-amount',
+          (cached.hologramAmount / 100).toString()
+        );
+      }
+      if (cached.wallpaperBrightness !== undefined) {
+        document.documentElement.style.setProperty(
+          '--wallpaper-brightness',
+          cached.wallpaperBrightness.toString()
+        );
+      }
+    }
+
     try {
       const res = await fetch('/api/preferences');
       const data = await res.json();
       if (data.preferences) {
-        setPreferences(data.preferences);
-        document.documentElement.setAttribute('data-theme', data.preferences.theme);
+        // Merge with client cache if server returned default values
+        const merged = cached ? { ...data.preferences, ...cached } : data.preferences;
+        setPreferences(merged);
+        saveClientPreferences(merged);
+        document.documentElement.setAttribute('data-theme', merged.theme);
         document.documentElement.style.setProperty(
           '--hologram-opacity',
-          (data.preferences.hologramOpacity / 100).toString()
+          (merged.hologramOpacity / 100).toString()
         );
         document.documentElement.style.setProperty(
           '--hologram-amount',
-          (data.preferences.hologramAmount / 100).toString()
+          (merged.hologramAmount / 100).toString()
         );
         document.documentElement.style.setProperty(
           '--wallpaper-brightness',
-          data.preferences.wallpaperBrightness.toString()
+          merged.wallpaperBrightness.toString()
         );
       }
     } catch (e) {
-      console.error('Failed to load preferences:', e);
+      console.error('Failed to load preferences from server, active via local client cache:', e);
     }
   };
 
@@ -372,20 +401,21 @@ export default function Desktop({ username, onLogout }: Props) {
     }
   };
 
-  // Save Preferences to API
+  // Save Preferences to API and client cache
   const handleSavePreferences = async (updates?: Partial<UserPreferences>) => {
     const payload = updates ? { ...preferences, ...updates } : preferences;
+    saveClientPreferences(payload);
+    if (updates) {
+      setPreferences((p) => ({ ...p, ...updates }));
+    }
     try {
       await fetch('/api/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (updates) {
-        setPreferences((p) => ({ ...p, ...updates }));
-      }
     } catch (e) {
-      console.error('Failed to save preferences:', e);
+      console.warn('Failed to save preferences to server, active in local browser cache:', e);
     }
   };
 

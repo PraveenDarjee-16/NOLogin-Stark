@@ -30,6 +30,12 @@ import {
 } from 'lucide-react';
 import { CloudFile, CloudFolder, FileCategory } from '@/lib/types';
 import { formatBytes, formatDate } from '@/lib/utils';
+import {
+  saveClientOfflineFile,
+  getClientOfflineFiles,
+  deleteClientOfflineFile,
+  getClientOfflineFileBlob,
+} from '@/lib/client-storage';
 import FileDetailsModal from './FileDetailsModal';
 import MoveFileModal from './MoveFileModal';
 
@@ -107,11 +113,34 @@ export default function FileExplorerWindow({
         filesUrl += 'folderId=root';
       }
 
+      let serverFiles: CloudFile[] = [];
       const filesRes = await fetch(filesUrl);
-      const filesData = await filesRes.json();
-      if (filesData.files) {
-        setFiles(filesData.files);
+      if (filesRes.ok) {
+        const filesData = await filesRes.json();
+        if (filesData.files) {
+          serverFiles = filesData.files;
+        }
       }
+
+      // Also retrieve client offline files from browser IndexedDB
+      const offlineFiles = await getClientOfflineFiles();
+      const filteredOffline = offlineFiles.filter((f) => {
+        if (isTrashView) return f.isTrash;
+        if (f.isTrash) return false;
+        if (isFavoritesView) return f.isFavorite;
+        if (isRecentView) return true;
+        if (currentCategory) return f.category === currentCategory;
+        if (currentFolderId && currentFolderId !== 'root') return f.folderId === currentFolderId;
+        return !f.folderId;
+      });
+
+      // Avoid duplicates
+      const serverNames = new Set(serverFiles.map((f) => f.name + '_' + f.size));
+      const nonDuplicateOffline = filteredOffline.filter(
+        (f) => !serverNames.has(f.name + '_' + f.size)
+      );
+
+      setFiles([...serverFiles, ...nonDuplicateOffline]);
     } catch (err) {
       console.error('Error fetching explorer data:', err);
     } finally {
@@ -179,23 +208,97 @@ export default function FileExplorerWindow({
       const file = filesArray[i];
       setUploadStatusText(`Uploading ${file.name} (${i + 1}/${filesArray.length})...`);
 
-      const formData = new FormData();
-      formData.append('file', file);
-      if (currentFolderId && currentFolderId !== 'root') {
-        formData.append('folderId', currentFolderId);
+      let uploadSuccess = false;
+
+      // 1. If file > 3.5MB, try direct signed cloud upload to bypass Vercel 4.5MB payload limit
+      if (file.size > 3.5 * 1024 * 1024) {
+        try {
+          const urlRes = await fetch('/api/storage/upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || 'application/octet-stream',
+            }),
+          });
+          const urlData = await urlRes.json();
+          if (urlData.success && urlData.uploadUrl) {
+            const uploadRes = await fetch(urlData.uploadUrl, {
+              method: urlData.uploadMethod || 'PUT',
+              headers: { 'Content-Type': file.type || 'application/octet-stream' },
+              body: file,
+            });
+            if (uploadRes.ok) {
+              await fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  storageKey: urlData.storageKey,
+                  name: file.name,
+                  size: file.size,
+                  mimeType: file.type || 'application/octet-stream',
+                  folderId: currentFolderId === 'root' ? null : currentFolderId,
+                }),
+              });
+              uploadSuccess = true;
+            }
+          }
+        } catch (cloudErr) {
+          console.warn('Direct cloud upload failed:', cloudErr);
+        }
       }
 
-      try {
-        const res = await fetch('/api/files', {
-          method: 'POST',
-          body: formData,
-        });
-        if (res.ok) {
-          completed++;
-          setUploadProgress(Math.floor((completed / filesArray.length) * 100));
+      // 2. Standard server upload for files <= 3.5MB
+      if (!uploadSuccess && file.size <= 3.5 * 1024 * 1024) {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (currentFolderId && currentFolderId !== 'root') {
+          formData.append('folderId', currentFolderId);
         }
-      } catch (err) {
-        console.error('File upload failed:', file.name, err);
+
+        try {
+          const res = await fetch('/api/files', {
+            method: 'POST',
+            body: formData,
+          });
+          if (res.ok) {
+            uploadSuccess = true;
+          }
+        } catch (err) {
+          console.warn('Standard server upload error:', file.name, err);
+        }
+      }
+
+      // 3. Fallback: Save to browser IndexedDB if server is in ephemeral Vercel mode or failed
+      if (!uploadSuccess) {
+        try {
+          const offlineFile = await saveClientOfflineFile(
+            file,
+            currentFolderId === 'root' ? null : currentFolderId
+          );
+          // Register 100-byte metadata with /api/files so server knows file exists
+          try {
+            await fetch('/api/files', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                storageKey: offlineFile.storageKey,
+                name: file.name,
+                size: file.size,
+                mimeType: file.type || 'application/octet-stream',
+                folderId: currentFolderId === 'root' ? null : currentFolderId,
+              }),
+            });
+          } catch {}
+          uploadSuccess = true;
+        } catch (idxErr) {
+          console.error('Failed to store file in client storage:', idxErr);
+        }
+      }
+
+      if (uploadSuccess) {
+        completed++;
+        setUploadProgress(Math.floor((completed / filesArray.length) * 100));
       }
     }
 
@@ -289,9 +392,14 @@ export default function FileExplorerWindow({
   };
 
   const handleDeletePermanently = async (fileId: string) => {
-    if (!confirm('Warning: This action will permanently delete this file from cloud storage. Proceed?')) return;
+    if (!confirm('Warning: This action will permanently delete this file from storage. Proceed?')) return;
     try {
-      await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
+      if (fileId.startsWith('local_file_')) {
+        await deleteClientOfflineFile(fileId);
+      }
+      try {
+        await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
+      } catch {}
       loadData();
       onRefreshStorageStats();
     } catch (e) {
@@ -352,7 +460,21 @@ export default function FileExplorerWindow({
   };
 
   // Direct file download
-  const handleDownloadFile = (file: CloudFile) => {
+  const handleDownloadFile = async (file: CloudFile) => {
+    if (file.id.startsWith('local_file_') || file.storageKey?.startsWith('local_')) {
+      const blob = await getClientOfflineFileBlob(file.id, file.name);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        return;
+      }
+    }
     const link = document.createElement('a');
     link.href = `/api/files/download/${file.id}`;
     link.download = file.name;
@@ -875,7 +997,14 @@ export default function FileExplorerWindow({
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={`/api/files/download/${file.id}?preview=true`}
+                                  src={file.id.startsWith('local_file_') ? undefined : `/api/files/download/${file.id}?preview=true`}
+                                  ref={(el) => {
+                                    if (el && file.id.startsWith('local_file_') && !el.src) {
+                                      getClientOfflineFileBlob(file.id, file.name).then((b) => {
+                                        if (b && el) el.src = URL.createObjectURL(b);
+                                      });
+                                    }
+                                  }}
                                   alt={file.name}
                                   loading="lazy"
                                   style={{

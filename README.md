@@ -96,30 +96,36 @@ The app is running at `http://localhost:3005`.
 
 ---
 
-## 🔒 Vercel Deployment & Environment Settings
+## 🔒 Vercel Deployment & Cloud Persistence Guide
 
-To deploy to Vercel and customize your credentials or cloud storage provider, add these Environment Variables in your **Vercel Project Settings**:
+### Why Serverless Needs Cloud Storage
+Vercel runs API routes in **Stateless Serverless Functions**. This means:
+1. Local disk writes (`/tmp` or `./data`) are **ephemeral** and reset whenever a serverless container terminates.
+2. Vercel imposes a **4.5 MB request body limit** on direct serverless function uploads.
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `ADMIN_USERNAME` | Admin account username | `admin` |
-| `ADMIN_PASSWORD` | Secure personal password | `stark2026!` |
-| `SESSION_SECRET` | Secret key for signing session tokens | `auto-generated` |
-| `STORAGE_CAPACITY_GB` | Total storage capacity limit in GB | `15` |
-| `STORAGE_PROVIDER` | `auto`, `supabase`, `r2`, or `local` | `auto` |
+### How STARK // EDITH Solves This:
+- **Zero-Config Browser Mode (IndexedDB)**: Custom live wallpaper videos (MP4/WebM of any size) and uploaded documents are automatically saved directly into your browser's IndexedDB storage. They persist across reloads and tab closes on that device even without any cloud account!
+- **Permanent Cloud Sync (Supabase / R2)**: Connecting free Supabase Storage syncs your files, documents, and live wallpaper settings across all your devices (phone, laptop, tablet) permanently.
 
-### Connecting Supabase Storage
-1. Create a project at [supabase.com](https://supabase.com).
-2. Create a private bucket named `personal-cloud`.
-3. Add these variables in Vercel:
+---
+
+### Connecting Supabase (Recommended for 100% Free Persistent Cloud)
+1. Sign up for free at [supabase.com](https://supabase.com) and create a project.
+2. In Supabase Dashboard, go to **Storage** and click **New Bucket**:
+   - Bucket name: `personal-cloud`
+   - Keep Public Bucket: **OFF** (Private)
+3. In your **Vercel Project Settings > Environment Variables**, add:
    ```env
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
    SUPABASE_BUCKET=personal-cloud
    ```
+4. Redeploy your project on Vercel. Now all files, documents, and live wallpapers will be saved permanently to your Supabase Cloud!
 
-### Connecting Cloudflare R2 / AWS S3
-1. Create an R2 bucket in Cloudflare dashboard.
+---
+
+### Connecting Cloudflare R2 / AWS S3 (Alternative)
+1. Create an R2 bucket in Cloudflare dashboard named `personal-cloud`.
 2. Add these variables in Vercel:
    ```env
    S3_ENDPOINT=https://<your_account_id>.r2.cloudflarestorage.com

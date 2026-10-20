@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
+import { getClientWallpaperBlob } from '@/lib/client-storage';
 
 interface Props {
   file: CloudFile;
@@ -19,8 +20,35 @@ interface Props {
 export default function ImageViewerWindow({ file }: Props) {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [imgSrc, setImgSrc] = useState<string>('');
+  const [localBlob, setLocalBlob] = useState<Blob | null>(null);
 
-  const imageUrl = `/api/files/download/${file.id}?preview=true`;
+  React.useEffect(() => {
+    let objectUrl: string | null = null;
+    let isCancelled = false;
+
+    const isLocal =
+      file.id.startsWith('local_file_') ||
+      file.id.startsWith('client_wp_') ||
+      file.storageKey?.startsWith('local_');
+
+    if (isLocal) {
+      getClientWallpaperBlob(file.id, file.name, file.size).then((blob) => {
+        if (blob && !isCancelled) {
+          setLocalBlob(blob);
+          objectUrl = URL.createObjectURL(blob);
+          setImgSrc(objectUrl);
+        }
+      });
+    } else {
+      setImgSrc(`/api/files/download/${file.id}?preview=true`);
+    }
+
+    return () => {
+      isCancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file.id, file.storageKey, file.name, file.size]);
 
   const handleZoomIn = () => setScale((s) => Math.min(3, s + 0.25));
   const handleZoomOut = () => setScale((s) => Math.max(0.5, s - 0.25));
@@ -28,6 +56,26 @@ export default function ImageViewerWindow({ file }: Props) {
   const handleReset = () => {
     setScale(1);
     setRotation(0);
+  };
+
+  const handleDownload = () => {
+    if (localBlob) {
+      const url = URL.createObjectURL(localBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } else {
+      const link = document.createElement('a');
+      link.href = `/api/files/download/${file.id}`;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   return (
@@ -77,14 +125,13 @@ export default function ImageViewerWindow({ file }: Props) {
           <button className="holo-btn" style={{ padding: '3px 8px', fontSize: '0.7rem' }} onClick={handleReset}>
             Reset
           </button>
-          <a
-            href={`/api/files/download/${file.id}`}
-            download={file.name}
+          <button
             className="window-control-btn"
             title="Download Original"
+            onClick={handleDownload}
           >
             <Download size={14} />
-          </a>
+          </button>
         </div>
       </div>
 
@@ -101,7 +148,7 @@ export default function ImageViewerWindow({ file }: Props) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={imageUrl}
+          src={imgSrc || undefined}
           alt={file.name}
           style={{
             maxWidth: '100%',

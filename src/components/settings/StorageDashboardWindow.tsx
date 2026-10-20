@@ -226,25 +226,59 @@ export default function StorageDashboardWindow({
         className="hologram-panel"
         style={{
           padding: '18px',
-          background: 'rgba(0, 240, 255, 0.06)',
-          borderColor: 'rgba(0, 240, 255, 0.28)',
+          background: stats.storageProvider === 'local' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(0, 240, 255, 0.06)',
+          borderColor: stats.storageProvider === 'local' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(0, 240, 255, 0.28)',
           marginTop: 'auto',
           flexShrink: 0,
           borderRadius: 'var(--radius-md)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-cyan)', marginBottom: '8px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: stats.storageProvider === 'local' ? '#f59e0b' : 'var(--accent-cyan)',
+            marginBottom: '8px',
+          }}
+        >
           <ShieldCheck size={16} />
           <span style={{ fontFamily: 'var(--font-hud)', fontSize: '0.84rem', letterSpacing: '0.06em' }}>
-            VERCEL & CLOUD STORAGE INTEGRATION NOTE
+            {stats.storageProvider === 'local'
+              ? 'VERCEL SERVERLESS NOTICE // BROWSER STORAGE ACTIVE'
+              : 'CLOUD TELEMETRY // PERMANENT STORAGE ENGINE ACTIVE'}
           </span>
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-          To connect your private <strong>Supabase Storage</strong> or <strong>Cloudflare R2</strong> bucket, add these environment variables in your Vercel Project Settings:
-          <code style={{ display: 'block', marginTop: '8px', background: 'rgba(2, 6, 18, 0.85)', border: '1px solid var(--border-hud)', padding: '8px 12px', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '0.74rem', color: 'var(--accent-cyan)', lineHeight: '1.6', wordBreak: 'break-all' }}>
-            SUPABASE_URL=https://xyz.supabase.co<br />
-            SUPABASE_SERVICE_ROLE_KEY=ey...<br />
-            ADMIN_PASSWORD=your_secure_password
+          {stats.storageProvider === 'local' ? (
+            <>
+              Vercel Serverless runs in stateless ephemeral containers. Your documents, notes, and custom live wallpapers are preserved in your browser&apos;s <strong>IndexedDB</strong> cache.
+              <br />
+              To enable <strong>permanent cloud sync across all your devices</strong>, create a free project at <strong>supabase.com</strong> and add these 3 variables in your <strong>Vercel Project Settings &gt; Environment Variables</strong>:
+            </>
+          ) : (
+            <>
+              Your Stark Personal Cloud is connected to <strong>{stats.storageProvider.toUpperCase()}</strong>. Documents, videos, and live wallpaper selections are synchronized permanently across all devices.
+            </>
+          )}
+          <code
+            style={{
+              display: 'block',
+              marginTop: '8px',
+              background: 'rgba(2, 6, 18, 0.85)',
+              border: '1px solid var(--border-hud)',
+              padding: '10px 14px',
+              borderRadius: '4px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.74rem',
+              color: 'var(--accent-cyan)',
+              lineHeight: '1.6',
+              wordBreak: 'break-all',
+            }}
+          >
+            SUPABASE_URL = https://your-project.supabase.co<br />
+            SUPABASE_SERVICE_ROLE_KEY = eyJhbGci...<br />
+            SUPABASE_BUCKET = personal-cloud
           </code>
         </div>
       </div>

@@ -21,6 +21,12 @@ import {
 } from 'lucide-react';
 import { LiveWallpaperType, CloudFile } from '@/lib/types';
 import { formatBytes, formatDate } from '@/lib/utils';
+import {
+  saveClientWallpaper,
+  saveClientOfflineFile,
+  getClientOfflineFiles,
+  getClientWallpaperBlob,
+} from '@/lib/client-storage';
 
 interface Props {
   currentWallpaperType: LiveWallpaperType;
@@ -112,24 +118,46 @@ export default function WallpaperGalleryWindow({
   const [webUrlInput, setWebUrlInput] = useState('');
   const [urlType, setUrlType] = useState<'video' | 'image'>('video');
 
+  const [activeCustomInfo, setActiveCustomInfo] = useState<{
+    name: string;
+    size: number;
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load user files from the website's cloud storage
+  // Load user files from the website's cloud storage and browser IndexedDB
   const loadCloudMedia = async () => {
     setIsLoadingCloud(true);
     try {
-      const res = await fetch('/api/files');
-      const data = await res.json();
-      if (data.files) {
-        // Filter only media files (videos and photos)
-        const media = (data.files as CloudFile[]).filter((f) => {
-          if (f.isTrash) return false;
-          const isVid = f.category === 'videos' || f.mimeType?.startsWith('video/');
-          const isImg = f.category === 'photos' || f.mimeType?.startsWith('image/');
-          return isVid || isImg;
-        });
-        setCloudFiles(media);
-      }
+      let serverFiles: CloudFile[] = [];
+      try {
+        const res = await fetch('/api/files');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.files) serverFiles = data.files;
+        }
+      } catch {}
+
+      // Retrieve local offline files from browser IndexedDB
+      let offlineFiles: CloudFile[] = [];
+      try {
+        offlineFiles = await getClientOfflineFiles();
+      } catch {}
+
+      const combined = [...serverFiles, ...offlineFiles];
+      const seen = new Set<string>();
+      const media = combined.filter((f) => {
+        if (f.isTrash) return false;
+        const isVid = f.category === 'videos' || f.mimeType?.startsWith('video/');
+        const isImg = f.category === 'photos' || f.mimeType?.startsWith('image/');
+        if (!isVid && !isImg) return false;
+        const key = f.name + '_' + f.size;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      setCloudFiles(media);
     } catch (err) {
       console.error('Failed to load cloud media:', err);
     } finally {
@@ -145,32 +173,77 @@ export default function WallpaperGalleryWindow({
     onSelectWallpaper(type, url);
   };
 
-  // Upload custom file from the current device
+  // Upload custom file from the current device (handles large videos > 4.5MB for Vercel)
   const handleUploadFromDevice = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
+    const isVid =
+      file.type.startsWith('video/') ||
+      file.name.toLowerCase().endsWith('.mp4') ||
+      file.name.toLowerCase().endsWith('.webm');
 
     try {
-      const res = await fetch('/api/files', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.file) {
-        const fileUrl = `/api/files/download/${data.file.id}?preview=true`;
-        const isVid = file.type.startsWith('video/');
-        handleApply(isVid ? 'custom-video' : 'custom-image', fileUrl);
-        // Refresh cloud media list
-        loadCloudMedia();
+      // 1. Immediately store in browser IndexedDB (wallpapers store + files store)
+      const localResult = await saveClientWallpaper(file);
+      await saveClientOfflineFile(file, null);
+
+      const clientRefUrl = `indexeddb://${localResult.id}`;
+      handleApply(isVid ? 'custom-video' : 'custom-image', clientRefUrl);
+      setActiveCustomInfo({ name: file.name, size: file.size });
+
+      // 2. Register metadata with server database (/api/files) using 100 bytes JSON
+      try {
+        await fetch('/api/files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            storageKey: `local_${localResult.id}`,
+            name: file.name,
+            size: file.size,
+            mimeType: file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
+            folderId: null,
+          }),
+        });
+      } catch (metaErr) {
+        console.warn('Metadata registration notice:', metaErr);
       }
+
+      // 3. If cloud direct upload is configured, also push to cloud
+      if (file.size > 3.5 * 1024 * 1024) {
+        try {
+          const urlRes = await fetch('/api/storage/upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
+            }),
+          });
+          const urlData = await urlRes.json();
+          if (urlData.success && urlData.uploadUrl) {
+            await fetch(urlData.uploadUrl, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
+              },
+              body: file,
+            });
+          }
+        } catch (cloudErr) {
+          console.warn('Cloud sync in progress or fallback to browser storage:', cloudErr);
+        }
+      }
+
+      await loadCloudMedia();
     } catch (err) {
-      console.error('Wallpaper upload failed:', err);
+      console.error('Wallpaper processing failed:', err);
     } finally {
       setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -212,7 +285,7 @@ export default function WallpaperGalleryWindow({
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/mp4,video/webm,image/png,image/jpeg,image/webp,image/gif"
+        accept="video/*,image/*,.mp4,.webm,.mov,.mkv,.avi,.png,.jpg,.jpeg,.webp"
         style={{ display: 'none' }}
         onChange={handleUploadFromDevice}
       />
@@ -635,7 +708,16 @@ export default function WallpaperGalleryWindow({
                     >
                       {isVid ? (
                         <video
-                          src={fileUrl}
+                          src={file.id.startsWith('local_file_') ? undefined : fileUrl}
+                          ref={(el) => {
+                            if (el && file.id.startsWith('local_file_') && !el.src) {
+                              getClientWallpaperBlob(file.id).then((blob) => {
+                                if (blob && el) {
+                                  el.src = URL.createObjectURL(blob);
+                                }
+                              });
+                            }
+                          }}
                           muted
                           playsInline
                           style={{
@@ -657,7 +739,16 @@ export default function WallpaperGalleryWindow({
                         />
                       ) : (
                         <img
-                          src={fileUrl}
+                          src={file.id.startsWith('local_file_') ? undefined : fileUrl}
+                          ref={(el) => {
+                            if (el && file.id.startsWith('local_file_') && !el.src) {
+                              getClientWallpaperBlob(file.id).then((blob) => {
+                                if (blob && el) {
+                                  el.src = URL.createObjectURL(blob);
+                                }
+                              });
+                            }
+                          }}
                           alt={file.name}
                           style={{
                             width: '100%',
@@ -685,7 +776,7 @@ export default function WallpaperGalleryWindow({
                         }}
                       >
                         {isVid ? <Film size={10} /> : <ImageIcon size={10} />}
-                        {isVid ? 'VIDEO' : 'IMAGE'}
+                        {file.id.startsWith('local_file_') ? 'DEVICE // ' : ''}{isVid ? 'VIDEO' : 'IMAGE'}
                       </span>
 
                       {isCurrent && (
@@ -747,7 +838,13 @@ export default function WallpaperGalleryWindow({
                     <button
                       className={`holo-btn ${isCurrent ? 'primary' : ''}`}
                       style={{ width: '100%', fontSize: '0.78rem' }}
-                      onClick={() => handleApply(isVid ? 'custom-video' : 'custom-image', fileUrl)}
+                      onClick={() => {
+                        const targetUrl =
+                          file.id.startsWith('local_file_') || file.storageKey?.startsWith('local_')
+                            ? `indexeddb://${file.id}`
+                            : fileUrl;
+                        handleApply(isVid ? 'custom-video' : 'custom-image', targetUrl);
+                      }}
                     >
                       {isCurrent ? <Check size={13} /> : <Sparkles size={13} />}
                       <span>{isCurrent ? 'Active Wallpaper' : 'Set as Live Wallpaper'}</span>
@@ -765,6 +862,84 @@ export default function WallpaperGalleryWindow({
       {/* ============================================================== */}
       {activeTab === 'add' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {isUploading && (
+            <div
+              className="hologram-panel"
+              style={{
+                padding: '14px 18px',
+                background: 'rgba(0, 240, 255, 0.15)',
+                borderColor: 'var(--accent-cyan)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                borderRadius: '6px',
+              }}
+            >
+              <RefreshCw
+                size={20}
+                className="animate-spin"
+                style={{ color: 'var(--accent-cyan)', flexShrink: 0 }}
+              />
+              <div>
+                <div style={{ color: '#fff', fontSize: '0.86rem', fontWeight: 600 }}>
+                  PROCESSING HIGH-DEF VIDEO MATRIX // CACHING TO BROWSER
+                </div>
+                <div style={{ color: 'var(--accent-cyan)', fontSize: '0.74rem', marginTop: '2px' }}>
+                  Storing video in browser IndexedDB memory for instant, zero-buffer playback...
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeCustomInfo && !isUploading && (
+            <div
+              className="hologram-panel"
+              style={{
+                padding: '14px 18px',
+                background: 'rgba(0, 240, 255, 0.12)',
+                borderColor: 'var(--accent-cyan)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                borderRadius: '6px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    background: 'rgba(0, 240, 255, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--accent-cyan)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Check size={18} />
+                </div>
+                <div>
+                  <div style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}>
+                    Active Live Wallpaper: {activeCustomInfo.name} ({formatBytes(activeCustomInfo.size)})
+                  </div>
+                  <div style={{ color: 'var(--accent-cyan)', fontSize: '0.74rem', marginTop: '2px' }}>
+                    Saved to browser storage & playing live on your desktop background!
+                  </div>
+                </div>
+              </div>
+
+              <button
+                className="holo-btn primary"
+                onClick={() => setActiveTab('cloud')}
+                style={{ fontSize: '0.74rem', flexShrink: 0 }}
+              >
+                <span>View Media</span>
+              </button>
+            </div>
+          )}
           <div
             style={{
               fontSize: '0.82rem',
@@ -833,7 +1008,12 @@ export default function WallpaperGalleryWindow({
               gap: '16px',
               cursor: 'pointer',
             }}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+                fileInputRef.current.click();
+              }
+            }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div
@@ -866,7 +1046,10 @@ export default function WallpaperGalleryWindow({
               disabled={isUploading}
               onClick={(e) => {
                 e.stopPropagation();
-                fileInputRef.current?.click();
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                  fileInputRef.current.click();
+                }
               }}
             >
               <Upload size={14} />

@@ -115,10 +115,14 @@ const SYSTEM_FOLDERS: CloudFolder[] = [
   },
 ];
 
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
 class Database {
   private dbPath: string;
   private memoryCache: DatabaseSchema | null = null;
   private isSaving = false;
+  private supabaseClient: SupabaseClient | null = null;
+  private supabaseBucket: string = 'personal-cloud';
 
   constructor() {
     if (process.env.VERCEL) {
@@ -126,10 +130,52 @@ class Database {
     } else {
       this.dbPath = path.join(process.cwd(), 'data', 'database.json');
     }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    this.supabaseBucket = process.env.SUPABASE_BUCKET || 'personal-cloud';
+
+    if (supabaseUrl && serviceRoleKey) {
+      try {
+        this.supabaseClient = createClient(supabaseUrl, serviceRoleKey);
+      } catch (err) {
+        console.warn('Supabase DB sync client initialization failed:', err);
+      }
+    }
   }
 
   private async load(): Promise<DatabaseSchema> {
     if (this.memoryCache) return this.memoryCache;
+
+    // 1. If Supabase Storage is configured, prioritize reading from cloud bucket
+    if (this.supabaseClient) {
+      try {
+        const { data, error } = await this.supabaseClient.storage
+          .from(this.supabaseBucket)
+          .download('_system/database.json');
+
+        if (data && !error) {
+          const raw = await data.text();
+          const parsed = JSON.parse(raw);
+          const folderIds = new Set(parsed.folders?.map((f: CloudFolder) => f.id) || []);
+          parsed.folders = parsed.folders || [];
+          for (const sys of SYSTEM_FOLDERS) {
+            if (!folderIds.has(sys.id)) {
+              parsed.folders.push(sys);
+            }
+          }
+          parsed.files = parsed.files || [];
+          parsed.notes = parsed.notes || [];
+          parsed.preferences = parsed.preferences || { ...DEFAULT_PREFERENCES };
+
+          this.memoryCache = parsed;
+          return parsed;
+        }
+      } catch (cloudErr) {
+        console.warn('Could not read database.json from Supabase, checking local/seed:', cloudErr);
+      }
+    }
 
     try {
       // If on Vercel and /tmp/database.json doesn't exist yet, seed from project data/database.json
@@ -181,15 +227,28 @@ class Database {
     if (!this.memoryCache || this.isSaving) return;
     this.isSaving = true;
     try {
+      const payloadString = JSON.stringify(this.memoryCache, null, 2);
+
+      // Local / /tmp write
       const dir = path.dirname(this.dbPath);
       if (!fsSync.existsSync(dir)) {
         await fs.mkdir(dir, { recursive: true });
       }
-      await fs.writeFile(
-        this.dbPath,
-        JSON.stringify(this.memoryCache, null, 2),
-        'utf-8'
-      );
+      await fs.writeFile(this.dbPath, payloadString, 'utf-8');
+
+      // Cloud Supabase write (persists across all Vercel Serverless instances!)
+      if (this.supabaseClient) {
+        try {
+          await this.supabaseClient.storage
+            .from(this.supabaseBucket)
+            .upload('_system/database.json', Buffer.from(payloadString), {
+              contentType: 'application/json',
+              upsert: true,
+            });
+        } catch (cloudSaveErr) {
+          console.error('Failed to sync database to Supabase cloud storage:', cloudSaveErr);
+        }
+      }
     } catch (err) {
       console.error('Error saving database:', err);
     } finally {

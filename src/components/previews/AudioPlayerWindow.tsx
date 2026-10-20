@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, Music, Download } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
+import { getClientOfflineFileBlob } from '@/lib/client-storage';
 
 interface Props {
   file: CloudFile;
@@ -16,8 +17,35 @@ export default function AudioPlayerWindow({ file }: Props) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [audioSrc, setAudioSrc] = useState<string>('');
+  const [localBlob, setLocalBlob] = useState<Blob | null>(null);
 
-  const audioUrl = `/api/files/download/${file.id}?preview=true`;
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let isCancelled = false;
+
+    const isLocal =
+      file.id.startsWith('local_file_') ||
+      file.id.startsWith('client_wp_') ||
+      file.storageKey?.startsWith('local_');
+
+    if (isLocal) {
+      getClientOfflineFileBlob(file.id, file.name).then((blob) => {
+        if (blob && !isCancelled) {
+          setLocalBlob(blob);
+          objectUrl = URL.createObjectURL(blob);
+          setAudioSrc(objectUrl);
+        }
+      });
+    } else {
+      setAudioSrc(`/api/files/download/${file.id}?preview=true`);
+    }
+
+    return () => {
+      isCancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file.id, file.storageKey, file.name]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -64,7 +92,7 @@ export default function AudioPlayerWindow({ file }: Props) {
     >
       <audio
         ref={audioRef}
-        src={audioUrl}
+        src={audioSrc || undefined}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={handleTimeUpdate}
@@ -180,14 +208,31 @@ export default function AudioPlayerWindow({ file }: Props) {
             >
               {isPlaying ? <Pause size={18} /> : <Play size={18} />}
             </button>
-            <a
-              href={`/api/files/download/${file.id}`}
-              download={file.name}
+            <button
               className="window-control-btn"
               title="Download Audio"
+              onClick={() => {
+                if (localBlob) {
+                  const url = URL.createObjectURL(localBlob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = file.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  setTimeout(() => URL.revokeObjectURL(url), 2000);
+                } else {
+                  const link = document.createElement('a');
+                  link.href = `/api/files/download/${file.id}`;
+                  link.download = file.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }
+              }}
             >
               <Download size={15} />
-            </a>
+            </button>
           </div>
 
           <span style={{ fontFamily: 'var(--font-mono)' }}>{formatTime(duration)}</span>

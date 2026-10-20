@@ -92,4 +92,31 @@ export class S3StorageProvider {
       return null;
     }
   }
+
+  async getSignedUploadUrl(
+    storageKey: string,
+    mimeType = 'application/octet-stream',
+    expiresIn = 3600
+  ): Promise<{ signedUrl: string } | null> {
+    if (!this.client) return null;
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: storageKey,
+        ContentType: mimeType,
+      });
+      const signedUrl = await getSignedUrl(this.client, command, { expiresIn });
+      return { signedUrl };
+    } catch {
+      return null;
+    }
+  }
+
+  getClient(): S3Client | null {
+    return this.client;
+  }
+
+  getBucketName(): string {
+    return this.bucketName;
+  }
 }

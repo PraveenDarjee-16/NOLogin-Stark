@@ -59,6 +59,44 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const contentType = req.headers.get('content-type') || '';
+
+    // Direct Upload Registration (JSON) for files uploaded straight to Supabase/S3 from browser
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      const { storageKey, name, size, mimeType, folderId } = body;
+
+      if (!storageKey || !name) {
+        return NextResponse.json(
+          { error: 'Missing required file details (storageKey, name)' },
+          { status: 400 }
+        );
+      }
+
+      const fileMime = mimeType || 'application/octet-stream';
+      const category = getFileCategory(fileMime, name);
+      const { type } = getStorageProvider();
+
+      const newFile: CloudFile = {
+        id: generateId('file'),
+        name,
+        size: Number(size) || 0,
+        mimeType: fileMime,
+        category,
+        folderId: folderId === 'root' ? null : folderId,
+        storageKey,
+        storageProvider: type,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isFavorite: false,
+        isTrash: false,
+      };
+
+      await db.addFile(newFile);
+      return NextResponse.json({ success: true, file: newFile });
+    }
+
+    // Standard Multipart FormData upload
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const folderId = (formData.get('folderId') as string) || null;

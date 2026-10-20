@@ -28,6 +28,20 @@ export async function GET(
 
   try {
     const { provider } = getStorageProvider();
+
+    // If cloud provider offers a signed streaming/download URL, redirect directly
+    // This allows full CDN video streaming and avoids Vercel 4.5MB serverless response limit
+    if (typeof provider.getSignedUrl === 'function') {
+      try {
+        const signedUrl = await provider.getSignedUrl(file.storageKey, 7200);
+        if (signedUrl) {
+          return NextResponse.redirect(signedUrl);
+        }
+      } catch (err) {
+        console.warn('Signed URL generation failed, falling back to buffer download', err);
+      }
+    }
+
     const buffer = await provider.downloadFile(file.storageKey);
 
     const isPreview = searchParams.get('preview') === 'true';

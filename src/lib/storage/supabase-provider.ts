@@ -88,4 +88,28 @@ export class SupabaseStorageProvider {
     if (error || !data) return null;
     return data.signedUrl;
   }
+
+  async getSignedUploadUrl(
+    storageKey: string
+  ): Promise<{ signedUrl: string; token: string; path: string } | null> {
+    if (!this.client) return null;
+    try {
+      const { data, error } = await this.client.storage
+        .from(this.bucketName)
+        .createSignedUploadUrl(storageKey);
+
+      if (error || !data) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  getClient(): SupabaseClient | null {
+    return this.client;
+  }
+
+  getBucketName(): string {
+    return this.bucketName;
+  }
 }

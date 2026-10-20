@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
+import { getClientWallpaperBlob, getClientOfflineFileBlob } from '@/lib/client-storage';
 
 interface Props {
   file: CloudFile;
@@ -25,8 +26,35 @@ export default function VideoPlayerWindow({ file }: Props) {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [videoSrc, setVideoSrc] = useState<string>('');
+  const [localBlob, setLocalBlob] = useState<Blob | null>(null);
 
-  const videoUrl = `/api/files/download/${file.id}?preview=true`;
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let isCancelled = false;
+
+    const isLocal =
+      file.id.startsWith('local_file_') ||
+      file.id.startsWith('client_wp_') ||
+      file.storageKey?.startsWith('local_');
+
+    if (isLocal) {
+      getClientWallpaperBlob(file.id, file.name, file.size).then((blob) => {
+        if (blob && !isCancelled) {
+          setLocalBlob(blob);
+          objectUrl = URL.createObjectURL(blob);
+          setVideoSrc(objectUrl);
+        }
+      });
+    } else {
+      setVideoSrc(`/api/files/download/${file.id}?preview=true`);
+    }
+
+    return () => {
+      isCancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file.id, file.storageKey, file.name, file.size]);
 
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -111,7 +139,7 @@ export default function VideoPlayerWindow({ file }: Props) {
       >
         <video
           ref={videoRef}
-          src={videoUrl}
+          src={videoSrc || undefined}
           playsInline
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
@@ -220,14 +248,31 @@ export default function VideoPlayerWindow({ file }: Props) {
               <Maximize size={13} />
             </button>
 
-            <a
-              href={`/api/files/download/${file.id}`}
-              download={file.name}
+            <button
               className="window-control-btn"
               title="Download Video File"
+              onClick={() => {
+                if (localBlob) {
+                  const url = URL.createObjectURL(localBlob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = file.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  setTimeout(() => URL.revokeObjectURL(url), 2000);
+                } else {
+                  const link = document.createElement('a');
+                  link.href = `/api/files/download/${file.id}`;
+                  link.download = file.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }
+              }}
             >
               <Download size={13} />
-            </a>
+            </button>
           </div>
         </div>
       </div>

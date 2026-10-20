@@ -9,10 +9,13 @@ interface Props {
   file: CloudFile;
 }
 
+import { getClientOfflineFileBlob } from '@/lib/client-storage';
+
 export default function DocumentViewerWindow({ file }: Props) {
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [localBlobUrl, setLocalBlobUrl] = useState<string | null>(null);
 
   const isPdf =
     file.mimeType === 'application/pdf' ||
@@ -26,7 +29,24 @@ export default function DocumentViewerWindow({ file }: Props) {
     );
 
   useEffect(() => {
-    if (isTextLike && !isPdf) {
+    let activeUrl: string | null = null;
+
+    if (file.id.startsWith('local_file_')) {
+      getClientOfflineFileBlob(file.id).then((blob) => {
+        if (!blob) return;
+        if (isTextLike && !isPdf) {
+          setIsLoading(true);
+          blob
+            .text()
+            .then((text) => setTextContent(text))
+            .catch((err) => setTextContent(`Error loading document content: ${err?.message}`))
+            .finally(() => setIsLoading(false));
+        } else if (isPdf) {
+          activeUrl = URL.createObjectURL(blob);
+          setLocalBlobUrl(activeUrl);
+        }
+      });
+    } else if (isTextLike && !isPdf) {
       setIsLoading(true);
       fetch(`/api/files/download/${file.id}?preview=true`)
         .then((res) => res.text())
@@ -34,6 +54,10 @@ export default function DocumentViewerWindow({ file }: Props) {
         .catch((err) => setTextContent(`Error loading document content: ${err?.message}`))
         .finally(() => setIsLoading(false));
     }
+
+    return () => {
+      if (activeUrl) URL.revokeObjectURL(activeUrl);
+    };
   }, [file.id, isTextLike, isPdf]);
 
   const handleCopy = () => {
@@ -80,15 +104,38 @@ export default function DocumentViewerWindow({ file }: Props) {
             </button>
           )}
 
-          <a
-            href={`/api/files/download/${file.id}`}
-            download={file.name}
-            className="holo-btn"
-            style={{ padding: '4px 10px', fontSize: '0.72rem' }}
-          >
-            <Download size={13} />
-            <span>Download</span>
-          </a>
+          {file.id.startsWith('local_file_') ? (
+            <button
+              onClick={async () => {
+                const blob = await getClientOfflineFileBlob(file.id);
+                if (blob) {
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = file.name;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }
+              }}
+              className="holo-btn"
+              style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+            >
+              <Download size={13} />
+              <span>Download</span>
+            </button>
+          ) : (
+            <a
+              href={`/api/files/download/${file.id}`}
+              download={file.name}
+              className="holo-btn"
+              style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+            >
+              <Download size={13} />
+              <span>Download</span>
+            </a>
+          )}
         </div>
       </div>
 
@@ -96,7 +143,7 @@ export default function DocumentViewerWindow({ file }: Props) {
       <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
         {isPdf ? (
           <iframe
-            src={`/api/files/download/${file.id}?preview=true`}
+            src={localBlobUrl || `/api/files/download/${file.id}?preview=true`}
             title={file.name}
             style={{
               width: '100%',

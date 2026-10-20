@@ -81,22 +81,6 @@ export async function saveClientWallpaper(
     req.onerror = () => reject(req.error);
   });
 
-  // Also duplicate into files store so it displays in media gallery and file explorer
-  try {
-    const fileRecord: ClientFileRecord = {
-      id,
-      name,
-      mimeType,
-      category: mimeType.startsWith('video/') ? 'videos' : 'photos',
-      folderId: null,
-      blob: file,
-      size: file.size,
-      createdAt: record.createdAt,
-    };
-    const tx2 = db.transaction('files', 'readwrite');
-    tx2.objectStore('files').put(fileRecord);
-  } catch {}
-
   const url = URL.createObjectURL(file);
   try {
     localStorage.setItem('stark_active_wallpaper_id', id);
@@ -331,7 +315,16 @@ export async function getClientOfflineFiles(): Promise<CloudFile[]> {
           isFavorite: false,
           isTrash: false,
         }));
-        resolve(cloudFiles);
+        const seen = new Set<string>();
+        const uniqueFiles: CloudFile[] = [];
+        for (const f of cloudFiles) {
+          const key = f.name.toLowerCase().trim() + '_' + f.size;
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueFiles.push(f);
+          }
+        }
+        resolve(uniqueFiles);
       };
       req.onerror = () => reject(req.error);
     });

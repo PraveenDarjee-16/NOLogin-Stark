@@ -185,17 +185,16 @@ export default function WallpaperGalleryWindow({
       file.name.toLowerCase().endsWith('.webm');
 
     try {
-      // 1. Immediately store in browser IndexedDB (wallpapers store + files store)
+      // 1. Immediately store in browser IndexedDB (wallpapers store)
       const localResult = await saveClientWallpaper(file);
-      await saveClientOfflineFile(file, null);
 
-      const clientRefUrl = `indexeddb://${localResult.id}`;
-      handleApply(isVid ? 'custom-video' : 'custom-image', clientRefUrl);
+      // Instant local preview on current device
+      handleApply(isVid ? 'custom-video' : 'custom-image', `indexeddb://${localResult.id}`);
       setActiveCustomInfo({ name: file.name, size: file.size });
 
       // 2. Register metadata with server database (/api/files) using 100 bytes JSON
       try {
-        await fetch('/api/files', {
+        const metaRes = await fetch('/api/files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -206,6 +205,17 @@ export default function WallpaperGalleryWindow({
             folderId: null,
           }),
         });
+
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          if (metaData.file?.id) {
+            // Update preferences on server with cross-device stream URL so other devices play this wallpaper
+            handleApply(
+              isVid ? 'custom-video' : 'custom-image',
+              `/api/files/download/${metaData.file.id}?preview=true`
+            );
+          }
+        }
       } catch (metaErr) {
         console.warn('Metadata registration notice:', metaErr);
       }

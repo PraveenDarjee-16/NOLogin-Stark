@@ -54,6 +54,43 @@ export default function LiveWallpaperCanvas({
             setResolvedUrl(activeUrl);
             return;
           }
+
+          // Cross-device fallback (Device 2): Look up matching video in server database
+          try {
+            const filesRes = await fetch('/api/files');
+            if (filesRes.ok) {
+              const filesData = await filesRes.json();
+              const serverFile = filesData.files?.find(
+                (f: any) =>
+                  f.storageKey?.includes(id) ||
+                  f.id === id ||
+                  (f.category === 'videos' && f.size > 0)
+              );
+              if (serverFile && !isCancelled) {
+                const streamUrl = `/api/files/download/${serverFile.id}?preview=true`;
+                setMediaError(false);
+                setResolvedUrl(streamUrl);
+                return;
+              }
+            }
+          } catch {}
+        } else if (customWallpaperUrl.startsWith('/api/files/download/')) {
+          // Check if local cache has this blob first
+          const parts = customWallpaperUrl.split('/');
+          const fileId = parts[parts.length - 1].split('?')[0];
+          const localBlob = await getClientWallpaperBlob(fileId);
+          if (localBlob && !isCancelled) {
+            const activeUrl = URL.createObjectURL(localBlob);
+            blobUrlRef.current = activeUrl;
+            setMediaError(false);
+            setResolvedUrl(activeUrl);
+            return;
+          }
+          if (!isCancelled) {
+            setMediaError(false);
+            setResolvedUrl(customWallpaperUrl);
+            return;
+          }
         } else if (!isCancelled) {
           setMediaError(false);
           setResolvedUrl(customWallpaperUrl);

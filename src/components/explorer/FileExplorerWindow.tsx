@@ -134,13 +134,19 @@ export default function FileExplorerWindow({
         return !f.folderId;
       });
 
-      // Avoid duplicates
-      const serverNames = new Set(serverFiles.map((f) => f.name + '_' + f.size));
-      const nonDuplicateOffline = filteredOffline.filter(
-        (f) => !serverNames.has(f.name + '_' + f.size)
-      );
+      // Avoid duplicates across server and offline storage
+      const combined = [...serverFiles, ...filteredOffline];
+      const seen = new Set<string>();
+      const deduplicated: CloudFile[] = [];
+      for (const f of combined) {
+        const key = f.name.toLowerCase().trim() + '_' + f.size;
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduplicated.push(f);
+        }
+      }
 
-      setFiles([...serverFiles, ...nonDuplicateOffline]);
+      setFiles(deduplicated);
     } catch (err) {
       console.error('Error fetching explorer data:', err);
     } finally {
@@ -209,6 +215,17 @@ export default function FileExplorerWindow({
       setUploadStatusText(`Uploading ${file.name} (${i + 1}/${filesArray.length})...`);
 
       let uploadSuccess = false;
+
+      // Always save a permanent local copy to IndexedDB so files never get wiped on Vercel
+      try {
+        await saveClientOfflineFile(
+          file,
+          currentFolderId === 'root' ? null : currentFolderId
+        );
+        uploadSuccess = true;
+      } catch (idxErr) {
+        console.warn('Local offline backup notice:', idxErr);
+      }
 
       // 1. If file > 3.5MB, try direct signed cloud upload to bypass Vercel 4.5MB payload limit
       if (file.size > 3.5 * 1024 * 1024) {

@@ -26,7 +26,11 @@ import VideoPlayerWindow from '../previews/VideoPlayerWindow';
 import AudioPlayerWindow from '../previews/AudioPlayerWindow';
 import DocumentViewerWindow from '../previews/DocumentViewerWindow';
 import SpiderWebRecallOverlay from './SpiderWebRecallOverlay';
-import { saveClientPreferences, getClientPreferences } from '@/lib/client-storage';
+import {
+  saveClientPreferences,
+  getClientPreferences,
+  getClientOfflineFiles,
+} from '@/lib/client-storage';
 
 interface Props {
   username: string;
@@ -64,7 +68,15 @@ const RIGHT_SHORTCUTS: DesktopShortcut[] = [
 export default function Desktop({ username, onLogout }: Props) {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFS);
   const [folders, setFolders] = useState<CloudFolder[]>([]);
-  const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
+  const [storageStats, setStorageStats] = useState<StorageStats | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('stark_cached_storage_stats');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return null;
+  });
 
   // Windows State Manager
   const [windows, setWindows] = useState<WindowState[]>([]);
@@ -155,11 +167,83 @@ export default function Desktop({ username, onLogout }: Props) {
 
   const fetchStorageStats = async () => {
     try {
-      const res = await fetch('/api/storage/stats');
-      const data = await res.json();
-      if (!data.error) {
-        setStorageStats(data);
+      let serverFiles: CloudFile[] = [];
+      let serverStats: StorageStats | null = null;
+      try {
+        const [statsRes, filesRes] = await Promise.all([
+          fetch('/api/storage/stats'),
+          fetch('/api/files'),
+        ]);
+        if (statsRes.ok) serverStats = await statsRes.json();
+        if (filesRes.ok) {
+          const filesData = await filesRes.json();
+          if (filesData.files) serverFiles = filesData.files;
+        }
+      } catch {}
+
+      // Retrieve local offline files from IndexedDB
+      let offlineFiles: CloudFile[] = [];
+      try {
+        offlineFiles = await getClientOfflineFiles();
+      } catch {}
+
+      // Merge and deduplicate all files to compute accurate storage usage
+      const combined = [...serverFiles, ...offlineFiles];
+      const seen = new Set<string>();
+      const allFiles = combined.filter((f) => {
+        const key = f.name.toLowerCase().trim() + '_' + f.size;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const totalCap = serverStats?.totalCapacityBytes || 15 * 1024 * 1024 * 1024;
+      let usedBytes = 0;
+      const byCategory: StorageStats['byCategory'] = {
+        documents: { bytes: 0, count: 0 },
+        photos: { bytes: 0, count: 0 },
+        videos: { bytes: 0, count: 0 },
+        music: { bytes: 0, count: 0 },
+        downloads: { bytes: 0, count: 0 },
+        other: { bytes: 0, count: 0 },
+        trash: { bytes: 0, count: 0 },
+      };
+
+      for (const f of allFiles) {
+        const sz = f.size || 0;
+        usedBytes += sz;
+        if (f.isTrash) {
+          byCategory.trash.bytes += sz;
+          byCategory.trash.count += 1;
+        } else {
+          const cat = (f.category || 'other') as keyof typeof byCategory;
+          if (byCategory[cat]) {
+            byCategory[cat].bytes += sz;
+            byCategory[cat].count += 1;
+          } else {
+            byCategory.other.bytes += sz;
+            byCategory.other.count += 1;
+          }
+        }
       }
+
+      const remaining = Math.max(0, totalCap - usedBytes);
+      const pct = Math.min(100, parseFloat(((usedBytes / totalCap) * 100).toFixed(1)));
+      const finalStats: StorageStats = {
+        totalCapacityBytes: totalCap,
+        usedBytes,
+        remainingBytes: remaining,
+        usedPercentage: pct,
+        byCategory,
+        storageProvider: serverStats?.storageProvider || 'local',
+        totalFiles: allFiles.length,
+        totalFolders: serverStats?.totalFolders || 0,
+      };
+
+      setStorageStats(finalStats);
+      try {
+        localStorage.setItem('stark_cached_storage_stats', JSON.stringify(finalStats));
+      } catch {}
     } catch (e) {
       console.error('Failed to load storage stats:', e);
     }

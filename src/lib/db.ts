@@ -120,6 +120,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 class Database {
   private dbPath: string;
   private memoryCache: DatabaseSchema | null = null;
+  private lastLoadTime = 0;
+  private readonly CACHE_TTL_MS = 2000;
   private isSaving = false;
   private supabaseClient: SupabaseClient | null = null;
   private supabaseBucket: string = 'personal-cloud';
@@ -145,8 +147,11 @@ class Database {
     }
   }
 
-  private async load(): Promise<DatabaseSchema> {
-    if (this.memoryCache) return this.memoryCache;
+  private async load(force = false): Promise<DatabaseSchema> {
+    const now = Date.now();
+    if (this.memoryCache && !force && now - this.lastLoadTime < this.CACHE_TTL_MS) {
+      return this.memoryCache;
+    }
 
     // 1. If Supabase Storage is configured, prioritize reading from cloud bucket
     if (this.supabaseClient) {
@@ -170,6 +175,7 @@ class Database {
           parsed.preferences = parsed.preferences || { ...DEFAULT_PREFERENCES };
 
           this.memoryCache = parsed;
+          this.lastLoadTime = Date.now();
           return parsed;
         }
       } catch (cloudErr) {
@@ -205,6 +211,7 @@ class Database {
         data.preferences = data.preferences || { ...DEFAULT_PREFERENCES };
 
         this.memoryCache = data;
+        this.lastLoadTime = Date.now();
         return data;
       }
     } catch (e) {
@@ -219,6 +226,7 @@ class Database {
       version: 1,
     };
     this.memoryCache = initial;
+    this.lastLoadTime = Date.now();
     await this.persist();
     return initial;
   }
@@ -226,6 +234,7 @@ class Database {
   private async persist(): Promise<void> {
     if (!this.memoryCache || this.isSaving) return;
     this.isSaving = true;
+    this.lastLoadTime = Date.now();
     try {
       const payloadString = JSON.stringify(this.memoryCache, null, 2);
 

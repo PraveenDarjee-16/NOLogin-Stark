@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     // Direct Upload Registration (JSON) for files uploaded straight to Supabase/S3 from browser
     if (contentType.includes('application/json')) {
       const body = await req.json();
-      const { storageKey, name, size, mimeType, folderId } = body;
+      const { storageKey, name, size, mimeType, folderId, dataUrl } = body;
 
       if (!storageKey || !name) {
         return NextResponse.json(
@@ -90,6 +90,8 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date().toISOString(),
         isFavorite: false,
         isTrash: false,
+        dataUrl: dataUrl || undefined,
+        publicUrl: dataUrl || undefined,
       };
 
       await db.addFile(newFile);
@@ -115,6 +117,12 @@ export async function POST(req: NextRequest) {
     const { provider, type } = getStorageProvider();
     const uploadResult = await provider.uploadFile(buffer, storageKey, mimeType);
 
+    // Keep dataUrl for files <= 3.5MB to guarantee persistence across ephemeral Vercel lambdas
+    const dataUrl =
+      file.size <= 3.5 * 1024 * 1024
+        ? `data:${mimeType};base64,${buffer.toString('base64')}`
+        : undefined;
+
     const newFile: CloudFile = {
       id: generateId('file'),
       name: file.name,
@@ -128,7 +136,8 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
       isFavorite: false,
       isTrash: false,
-      publicUrl: uploadResult.publicUrl,
+      publicUrl: uploadResult.publicUrl || dataUrl,
+      dataUrl,
     };
 
     await db.addFile(newFile);

@@ -130,8 +130,8 @@ export default function Desktop({ username, onLogout }: Props) {
       const res = await fetch('/api/preferences');
       const data = await res.json();
       if (data.preferences) {
-        // Merge with client cache if server returned default values
-        const merged = cached ? { ...data.preferences, ...cached } : data.preferences;
+        // Server preferences take precedence over stale cached preferences
+        const merged = cached ? { ...cached, ...data.preferences } : data.preferences;
         setPreferences(merged);
         saveClientPreferences(merged);
         document.documentElement.setAttribute('data-theme', merged.theme);
@@ -197,6 +197,20 @@ export default function Desktop({ username, onLogout }: Props) {
         return true;
       });
 
+      // Guard against transient 0-byte cold start drop if we previously had cached stats
+      if (allFiles.length === 0 && serverFiles.length === 0 && offlineFiles.length === 0) {
+        try {
+          const raw = localStorage.getItem('stark_cached_storage_stats');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.usedBytes > 0) {
+              setStorageStats(parsed);
+              return;
+            }
+          }
+        } catch {}
+      }
+
       const totalCap = serverStats?.totalCapacityBytes || 15 * 1024 * 1024 * 1024;
       let usedBytes = 0;
       const byCategory: StorageStats['byCategory'] = {
@@ -253,6 +267,38 @@ export default function Desktop({ username, onLogout }: Props) {
     fetchPreferences();
     fetchFolders();
     fetchStorageStats();
+  }, []);
+
+  // Real-time synchronization across devices (wallpapers, themes, and calibration)
+  useEffect(() => {
+    const syncInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/preferences');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.preferences) return;
+
+        setPreferences((prev) => {
+          const p = data.preferences;
+          const isDiff =
+            prev.wallpaperType !== p.wallpaperType ||
+            prev.customWallpaperUrl !== p.customWallpaperUrl ||
+            prev.theme !== p.theme ||
+            prev.hologramOpacity !== p.hologramOpacity ||
+            prev.hologramAmount !== p.hologramAmount ||
+            prev.wallpaperBrightness !== p.wallpaperBrightness;
+
+          if (isDiff) {
+            const updated = { ...prev, ...p };
+            saveClientPreferences(updated);
+            return updated;
+          }
+          return prev;
+        });
+      } catch {}
+    }, 3000);
+
+    return () => clearInterval(syncInterval);
   }, []);
 
   // Update theme & CSS variables when preferences change
@@ -524,7 +570,9 @@ export default function Desktop({ username, onLogout }: Props) {
         style={{ display: 'none' }}
         onChange={async (e) => {
           if (e.target.files && e.target.files.length > 0) {
-            openWindow('explorer', 'Cloud File Explorer');
+            const files = Array.from(e.target.files);
+            openWindow('explorer', 'Cloud File Explorer', { uploadFiles: files });
+            e.target.value = '';
           }
         }}
       />
@@ -633,6 +681,7 @@ export default function Desktop({ username, onLogout }: Props) {
               initialFolderId={win.data?.folderId || null}
               initialCategory={win.data?.category || null}
               initialSystemView={win.data?.systemView || null}
+              initialUploadFiles={win.data?.uploadFiles || null}
               onPreviewFile={handlePreviewFile}
               onRefreshStorageStats={fetchStorageStats}
             />
@@ -647,7 +696,7 @@ export default function Desktop({ username, onLogout }: Props) {
               onSelectWallpaper={(type, url) => {
                 const updates: Partial<UserPreferences> = {
                   wallpaperType: type,
-                  ...(url ? { customWallpaperUrl: url } : {}),
+                  customWallpaperUrl: url || '',
                 };
                 setPreferences((p) => ({ ...p, ...updates }));
                 handleSavePreferences(updates);

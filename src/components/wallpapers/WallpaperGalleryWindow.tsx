@@ -192,32 +192,41 @@ export default function WallpaperGalleryWindow({
       handleApply(isVid ? 'custom-video' : 'custom-image', `indexeddb://${localResult.id}`);
       setActiveCustomInfo({ name: file.name, size: file.size });
 
-      // 2. Register metadata with server database (/api/files) using 100 bytes JSON
-      try {
-        const metaRes = await fetch('/api/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            storageKey: `local_${localResult.id}`,
-            name: file.name,
-            size: file.size,
-            mimeType: file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
-            folderId: null,
-          }),
-        });
-
-        if (metaRes.ok) {
-          const metaData = await metaRes.json();
-          if (metaData.file?.id) {
-            // Update preferences on server with cross-device stream URL so other devices play this wallpaper
-            handleApply(
-              isVid ? 'custom-video' : 'custom-image',
-              `/api/files/download/${metaData.file.id}?preview=true`
-            );
+      // 2. Upload file to server so other devices can stream and display this wallpaper
+      if (file.size <= 4 * 1024 * 1024) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch('/api/files', { method: 'POST', body: formData });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.file?.id) {
+              handleApply(
+                isVid ? 'custom-video' : 'custom-image',
+                `/api/files/download/${data.file.id}?preview=true`
+              );
+            }
           }
+        } catch (serverErr) {
+          console.warn('Server wallpaper upload notice:', serverErr);
         }
-      } catch (metaErr) {
-        console.warn('Metadata registration notice:', metaErr);
+      } else {
+        // Register metadata for large files > 4MB so server and other devices know file exists
+        try {
+          await fetch('/api/files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storageKey: `local_${localResult.id}`,
+              name: file.name,
+              size: file.size,
+              mimeType: file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
+              folderId: null,
+            }),
+          });
+        } catch (metaErr) {
+          console.warn('Metadata registration notice:', metaErr);
+        }
       }
 
       // 3. If cloud direct upload is configured, also push to cloud

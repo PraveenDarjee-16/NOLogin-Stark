@@ -29,7 +29,7 @@ import {
   Play,
 } from 'lucide-react';
 import { CloudFile, CloudFolder, FileCategory } from '@/lib/types';
-import { formatBytes, formatDate } from '@/lib/utils';
+import { formatBytes, formatDate, getFileCategory } from '@/lib/utils';
 import {
   saveClientOfflineFile,
   getClientOfflineFiles,
@@ -43,6 +43,7 @@ interface Props {
   initialFolderId?: string | null;
   initialCategory?: FileCategory | null;
   initialSystemView?: 'recent' | 'favorites' | 'trash' | null;
+  initialUploadFiles?: File[] | null;
   onPreviewFile: (file: CloudFile) => void;
   onRefreshStorageStats: () => void;
 }
@@ -54,6 +55,7 @@ export default function FileExplorerWindow({
   initialFolderId = null,
   initialCategory = null,
   initialSystemView = null,
+  initialUploadFiles = null,
   onPreviewFile,
   onRefreshStorageStats,
 }: Props) {
@@ -87,8 +89,10 @@ export default function FileExplorerWindow({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Fetch folders and files
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (showSpinner = false) => {
+    if (showSpinner) {
+      setIsLoading(true);
+    }
     try {
       // Load folders
       const foldersRes = await fetch(`/api/folders${isTrashView ? '?trash=true' : ''}`);
@@ -123,7 +127,11 @@ export default function FileExplorerWindow({
       }
 
       // Also retrieve client offline files from browser IndexedDB
-      const offlineFiles = await getClientOfflineFiles();
+      let offlineFiles: CloudFile[] = [];
+      try {
+        offlineFiles = await getClientOfflineFiles();
+      } catch {}
+
       const filteredOffline = offlineFiles.filter((f) => {
         if (isTrashView) return f.isTrash;
         if (f.isTrash) return false;
@@ -155,7 +163,15 @@ export default function FileExplorerWindow({
   };
 
   useEffect(() => {
-    loadData();
+    loadData(true);
+  }, [currentFolderId, currentCategory, isFavoritesView, isTrashView, isRecentView]);
+
+  // Live cross-device synchronization: silently refresh files in background every 3.5s with zero screen flicker
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      loadData(false);
+    }, 3500);
+    return () => clearInterval(syncInterval);
   }, [currentFolderId, currentCategory, isFavoritesView, isTrashView, isRecentView]);
 
   // Navigate to folder
@@ -200,35 +216,83 @@ export default function FileExplorerWindow({
     }
   };
 
-  // Upload handler
+  // Handle initial upload files passed from taskbar quick upload
+  useEffect(() => {
+    if (initialUploadFiles && initialUploadFiles.length > 0) {
+      handleUploadFiles(initialUploadFiles);
+    }
+  }, [initialUploadFiles]);
+
+  // Upload handler with optimistic feedback and parallel persistence
   const handleUploadFiles = async (fileList: FileList | File[]) => {
     if (!fileList || fileList.length === 0) return;
 
-    setUploadProgress(10);
-    setUploadStatusText(`Preparing ${fileList.length} file(s)...`);
-
     const filesArray = Array.from(fileList);
+    setUploadProgress(5);
+    setUploadStatusText(`Preparing ${filesArray.length} file(s)...`);
+
+    // 1. Instant optimistic UI insertion (<1 millisecond feedback)
+    const optimisticFiles: CloudFile[] = filesArray.map((file) => {
+      const mime = file.type || 'application/octet-stream';
+      return {
+        id: `optimistic_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: file.name,
+        size: file.size,
+        mimeType: mime,
+        category: getFileCategory(mime, file.name),
+        folderId: currentFolderId === 'root' ? null : currentFolderId,
+        storageKey: `local_temp_${file.name}`,
+        storageProvider: 'local',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isFavorite: false,
+        isTrash: false,
+        isUploading: true,
+      };
+    });
+
+    setFiles((prev) => [...optimisticFiles, ...prev]);
+
     let completed = 0;
 
     for (let i = 0; i < filesArray.length; i++) {
       const file = filesArray[i];
       setUploadStatusText(`Uploading ${file.name} (${i + 1}/${filesArray.length})...`);
 
-      let uploadSuccess = false;
+      let serverUploadedFile: CloudFile | null = null;
 
-      // Always save a permanent local copy to IndexedDB so files never get wiped on Vercel
-      try {
-        await saveClientOfflineFile(
-          file,
-          currentFolderId === 'root' ? null : currentFolderId
-        );
-        uploadSuccess = true;
-      } catch (idxErr) {
-        console.warn('Local offline backup notice:', idxErr);
+      // Always save a local copy in browser IndexedDB asynchronously
+      saveClientOfflineFile(file, currentFolderId === 'root' ? null : currentFolderId).catch((idxErr) => {
+        console.warn('Client offline cache notice:', idxErr);
+      });
+
+      // 1. Standard server upload for files <= 4MB (Vercel payload limit is 4.5MB)
+      if (file.size <= 4 * 1024 * 1024) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          if (currentFolderId && currentFolderId !== 'root') {
+            formData.append('folderId', currentFolderId);
+          }
+
+          const res = await fetch('/api/files', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.file) {
+              serverUploadedFile = data.file;
+            }
+          }
+        } catch (err) {
+          console.warn('Standard server upload notice:', file.name, err);
+        }
       }
 
-      // 1. If file > 3.5MB, try direct signed cloud upload to bypass Vercel 4.5MB payload limit
-      if (file.size > 3.5 * 1024 * 1024) {
+      // 2. Direct signed cloud upload for files > 4MB (bypasses Vercel 4.5MB serverless limit)
+      if (!serverUploadedFile && file.size > 4 * 1024 * 1024) {
         try {
           const urlRes = await fetch('/api/storage/upload-url', {
             method: 'POST',
@@ -246,7 +310,7 @@ export default function FileExplorerWindow({
               body: file,
             });
             if (uploadRes.ok) {
-              await fetch('/api/files', {
+              const regRes = await fetch('/api/files', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -257,75 +321,63 @@ export default function FileExplorerWindow({
                   folderId: currentFolderId === 'root' ? null : currentFolderId,
                 }),
               });
-              uploadSuccess = true;
+              const regData = await regRes.json();
+              if (regData.file) {
+                serverUploadedFile = regData.file;
+              }
             }
           }
         } catch (cloudErr) {
-          console.warn('Direct cloud upload failed:', cloudErr);
+          console.warn('Cloud direct upload notice:', cloudErr);
         }
       }
 
-      // 2. Standard server upload for files <= 3.5MB
-      if (!uploadSuccess && file.size <= 3.5 * 1024 * 1024) {
-        const formData = new FormData();
-        formData.append('file', file);
-        if (currentFolderId && currentFolderId !== 'root') {
-          formData.append('folderId', currentFolderId);
-        }
-
+      // 3. Fallback for large files on Vercel: register metadata so server & other devices know file exists with exact size
+      if (!serverUploadedFile) {
         try {
-          const res = await fetch('/api/files', {
-            method: 'POST',
-            body: formData,
-          });
-          if (res.ok) {
-            uploadSuccess = true;
-          }
-        } catch (err) {
-          console.warn('Standard server upload error:', file.name, err);
-        }
-      }
-
-      // 3. Fallback: Save to browser IndexedDB if server is in ephemeral Vercel mode or failed
-      if (!uploadSuccess) {
-        try {
-          const offlineFile = await saveClientOfflineFile(
+          const offline = await saveClientOfflineFile(
             file,
             currentFolderId === 'root' ? null : currentFolderId
           );
-          // Register 100-byte metadata with /api/files so server knows file exists
-          try {
-            await fetch('/api/files', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                storageKey: offlineFile.storageKey,
-                name: file.name,
-                size: file.size,
-                mimeType: file.type || 'application/octet-stream',
-                folderId: currentFolderId === 'root' ? null : currentFolderId,
-              }),
-            });
-          } catch {}
-          uploadSuccess = true;
+          const metaRes = await fetch('/api/files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storageKey: offline.storageKey,
+              name: file.name,
+              size: file.size,
+              mimeType: file.type || 'application/octet-stream',
+              folderId: currentFolderId === 'root' ? null : currentFolderId,
+            }),
+          });
+          const metaData = await metaRes.json();
+          serverUploadedFile = metaData.file || offline;
         } catch (idxErr) {
-          console.error('Failed to store file in client storage:', idxErr);
+          console.warn('Client fallback notice:', idxErr);
         }
       }
 
-      if (uploadSuccess) {
-        completed++;
-        setUploadProgress(Math.floor((completed / filesArray.length) * 100));
+      // Replace optimistic placeholder with real confirmed file
+      if (serverUploadedFile) {
+        const confirmed = serverUploadedFile;
+        setFiles((prev) =>
+          prev.map((f) => (f.name === file.name && f.size === file.size ? confirmed : f))
+        );
       }
+
+      completed++;
+      setUploadProgress(Math.floor((completed / filesArray.length) * 100));
     }
 
     setUploadStatusText('Upload complete!');
     setTimeout(() => {
       setUploadProgress(null);
       setUploadStatusText('');
-      loadData();
-      onRefreshStorageStats();
-    }, 800);
+    }, 500);
+
+    // Silent background refresh to guarantee clean state without loading spinner
+    loadData(false);
+    onRefreshStorageStats();
   };
 
   // Drag & drop handlers
@@ -365,7 +417,7 @@ export default function FileExplorerWindow({
       if (res.ok) {
         setNewFolderName('');
         setNewFolderPrompt(false);
-        loadData();
+        loadData(false);
       }
     } catch (err) {
       console.error('Failed to create folder:', err);
@@ -387,7 +439,7 @@ export default function FileExplorerWindow({
       });
       setRenamingItemId(null);
       setRenamingName('');
-      loadData();
+      loadData(false);
     } catch (e) {
       console.error('Rename failed:', e);
     }
@@ -401,7 +453,7 @@ export default function FileExplorerWindow({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isTrash: trash }),
       });
-      loadData();
+      loadData(false);
       onRefreshStorageStats();
     } catch (e) {
       console.error('Trash action failed:', e);
@@ -411,13 +463,11 @@ export default function FileExplorerWindow({
   const handleDeletePermanently = async (fileId: string) => {
     if (!confirm('Warning: This action will permanently delete this file from storage. Proceed?')) return;
     try {
-      if (fileId.startsWith('local_file_')) {
-        await deleteClientOfflineFile(fileId);
-      }
+      await deleteClientOfflineFile(fileId);
       try {
         await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
       } catch {}
-      loadData();
+      loadData(false);
       onRefreshStorageStats();
     } catch (e) {
       console.error('Delete failed:', e);
@@ -429,9 +479,10 @@ export default function FileExplorerWindow({
     if (!confirm('Warning: Permanently delete all items currently in the Trash?')) return;
     try {
       for (const f of files) {
+        await deleteClientOfflineFile(f.id);
         await fetch(`/api/files/${f.id}`, { method: 'DELETE' });
       }
-      loadData();
+      loadData(false);
       onRefreshStorageStats();
     } catch (e) {
       console.error('Empty trash failed:', e);
@@ -447,7 +498,7 @@ export default function FileExplorerWindow({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isFavorite: !file.isFavorite }),
       });
-      loadData();
+      loadData(false);
     } catch (err) {
       console.error('Favorite toggle failed:', err);
     }
@@ -461,7 +512,7 @@ export default function FileExplorerWindow({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderId: targetFolderId }),
       });
-      loadData();
+      loadData(false);
     } catch (err) {
       console.error('Move file failed:', err);
     }
@@ -753,7 +804,7 @@ export default function FileExplorerWindow({
 
           <button
             className="window-control-btn"
-            onClick={loadData}
+            onClick={() => loadData(true)}
             title="Refresh files"
           >
             <RefreshCw size={14} />

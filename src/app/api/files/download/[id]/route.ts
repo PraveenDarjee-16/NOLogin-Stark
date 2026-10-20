@@ -42,10 +42,56 @@ export async function GET(
       }
     }
 
-    const buffer = await provider.downloadFile(file.storageKey);
+    let buffer: Buffer | null = null;
+    try {
+      buffer = await provider.downloadFile(file.storageKey);
+    } catch (err) {
+      if (file.dataUrl) {
+        const commaIdx = file.dataUrl.indexOf(',');
+        const base64Data = commaIdx >= 0 ? file.dataUrl.substring(commaIdx + 1) : file.dataUrl;
+        buffer = Buffer.from(base64Data, 'base64');
+      } else {
+        throw err;
+      }
+    }
 
+    if (!buffer) {
+      return NextResponse.json(
+        { error: 'Failed to retrieve file from storage engine' },
+        { status: 500 }
+      );
+    }
+
+    const totalSize = buffer.length;
     const isPreview = searchParams.get('preview') === 'true';
     const dispositionType = isPreview ? 'inline' : 'attachment';
+    const rangeHeader = req.headers.get('range');
+
+    // HTTP 206 Partial Content support for smooth video/audio seeking and playback
+    if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+
+      if (!isNaN(start) && start < totalSize) {
+        const chunkEnd = Math.min(end, totalSize - 1);
+        const chunk = buffer.subarray(start, chunkEnd + 1);
+
+        return new NextResponse(chunk as any, {
+          status: 206,
+          headers: {
+            'Content-Type': file.mimeType || 'application/octet-stream',
+            'Content-Range': `bytes ${start}-${chunkEnd}/${totalSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunk.length.toString(),
+            'Content-Disposition': `${dispositionType}; filename="${encodeURIComponent(
+              file.name
+            )}"`,
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      }
+    }
 
     return new NextResponse(buffer as any, {
       status: 200,
@@ -54,8 +100,9 @@ export async function GET(
         'Content-Disposition': `${dispositionType}; filename="${encodeURIComponent(
           file.name
         )}"`,
-        'Content-Length': buffer.length.toString(),
-        'Cache-Control': 'private, max-age=3600',
+        'Content-Length': totalSize.toString(),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=86400',
       },
     });
   } catch (error: any) {

@@ -22,6 +22,8 @@ export interface CloudFile {
   trashDate?: string | null;
   publicUrl?: string;
   thumbnailUrl?: string;
+  dataUrl?: string;
+  isUploading?: boolean;
 }
 
 export interface CloudFolder {

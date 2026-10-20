@@ -37,7 +37,12 @@ export default function LiveWallpaperCanvas({
 
     async function resolve() {
       if (wallpaperType !== 'custom-video' && wallpaperType !== 'custom-image') {
+        setResolvedUrl(undefined);
         return;
+      }
+
+      if (!customWallpaperUrl) {
+        setResolvedUrl(undefined);
       }
 
       if (customWallpaperUrl) {

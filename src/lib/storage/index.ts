@@ -11,11 +11,22 @@ export interface StorageProvider {
   downloadFile(storageKey: string): Promise<Buffer>;
   deleteFile(storageKey: string): Promise<boolean>;
   getDownloadUrl?(storageKey: string): Promise<string | null>;
-  getSignedUrl?(storageKey: string, expiresIn?: number): Promise<string | null>;
+  getSignedUrl?(
+    storageKey: string,
+    expiresIn?: number,
+    downloadFilename?: string
+  ): Promise<string | null>;
   getSignedUploadUrl?(
     storageKey: string,
     mimeType?: string
   ): Promise<{ signedUrl: string; token?: string; path?: string } | null>;
+  getFilePath?(storageKey: string): string | null;
+  getFileStat?(storageKey: string): { size: number; mtime: Date } | null;
+  createReadStream?(
+    storageKey: string,
+    options?: { start?: number; end?: number }
+  ): any;
+  listStorageFiles?(): Array<{ key: string; size: number; mtime: Date }>;
 }
 
 let activeProvider: StorageProvider | null = null;

@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const preferences = await db.getPreferences();
+  const preferences = await db.getPreferences(session.username);
   return NextResponse.json({ preferences });
 }
 
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = (await req.json()) as Partial<UserPreferences>;
-    const updated = await db.updatePreferences(body);
+    const updated = await db.updatePreferences(session.username, body);
     return NextResponse.json({ success: true, preferences: updated });
   } catch (error: any) {
     return NextResponse.json(

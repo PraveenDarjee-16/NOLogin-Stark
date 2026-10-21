@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
-import { getClientWallpaperBlob } from '@/lib/client-storage';
+import { getClientWallpaperBlob, getClientOfflineFileBlob } from '@/lib/client-storage';
 
 interface Props {
   file: CloudFile;
@@ -27,22 +27,28 @@ export default function ImageViewerWindow({ file }: Props) {
     let objectUrl: string | null = null;
     let isCancelled = false;
 
-    const isLocal =
-      file.id.startsWith('local_file_') ||
-      file.id.startsWith('client_wp_') ||
-      file.storageKey?.startsWith('local_');
-
-    if (isLocal) {
-      getClientWallpaperBlob(file.id, file.name, file.size).then((blob) => {
+    async function loadSrc() {
+      // 1. Try local IndexedDB cache first
+      try {
+        let blob = await getClientOfflineFileBlob(file.id, file.name);
+        if (!blob) {
+          blob = await getClientWallpaperBlob(file.id, file.name, file.size);
+        }
         if (blob && !isCancelled) {
           setLocalBlob(blob);
           objectUrl = URL.createObjectURL(blob);
           setImgSrc(objectUrl);
+          return;
         }
-      });
-    } else {
-      setImgSrc(`/api/files/download/${file.id}?preview=true`);
+      } catch {}
+
+      // 2. Canonical server URL
+      if (!isCancelled) {
+        setImgSrc(`/api/files/download/${encodeURIComponent(file.id)}?preview=true`);
+      }
     }
+
+    loadSrc();
 
     return () => {
       isCancelled = true;
@@ -67,10 +73,10 @@ export default function ImageViewerWindow({ file }: Props) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
     } else {
       const link = document.createElement('a');
-      link.href = `/api/files/download/${file.id}`;
+      link.href = `/api/files/download/${encodeURIComponent(file.id)}`;
       link.download = file.name;
       document.body.appendChild(link);
       link.click();

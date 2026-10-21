@@ -261,38 +261,13 @@ export default function FileExplorerWindow({
 
       let serverUploadedFile: CloudFile | null = null;
 
-      // Always save a local copy in browser IndexedDB asynchronously
+      // Always save a local copy in browser IndexedDB asynchronously for resilience
       saveClientOfflineFile(file, currentFolderId === 'root' ? null : currentFolderId).catch((idxErr) => {
         console.warn('Client offline cache notice:', idxErr);
       });
 
-      // 1. Standard server upload for files <= 4MB (Vercel payload limit is 4.5MB)
-      if (file.size <= 4 * 1024 * 1024) {
-        try {
-          const formData = new FormData();
-          formData.append('file', file);
-          if (currentFolderId && currentFolderId !== 'root') {
-            formData.append('folderId', currentFolderId);
-          }
-
-          const res = await fetch('/api/files', {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            if (data.file) {
-              serverUploadedFile = data.file;
-            }
-          }
-        } catch (err) {
-          console.warn('Standard server upload notice:', file.name, err);
-        }
-      }
-
-      // 2. Direct signed cloud upload for files > 4MB (bypasses Vercel 4.5MB serverless limit)
-      if (!serverUploadedFile && file.size > 4 * 1024 * 1024) {
+      // 1. Direct presigned cloud upload if cloud provider is configured
+      if (file.size > 4 * 1024 * 1024) {
         try {
           const urlRes = await fetch('/api/storage/upload-url', {
             method: 'POST',
@@ -332,7 +307,35 @@ export default function FileExplorerWindow({
         }
       }
 
-      // 3. Fallback for large files on Vercel: register metadata so server & other devices know file exists with exact size
+      // 2. Standard server upload to /api/files (handles videos and files of any size)
+      if (!serverUploadedFile) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          if (currentFolderId && currentFolderId !== 'root') {
+            formData.append('folderId', currentFolderId);
+          }
+
+          const res = await fetch('/api/files', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.file) {
+              serverUploadedFile = data.file;
+            }
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            console.warn('Server upload notice:', errData.error || res.statusText);
+          }
+        } catch (err) {
+          console.warn('Standard server upload notice:', file.name, err);
+        }
+      }
+
+      // 3. Fallback for offline mode: register metadata
       if (!serverUploadedFile) {
         try {
           const offline = await saveClientOfflineFile(
@@ -529,26 +532,49 @@ export default function FileExplorerWindow({
 
   // Direct file download
   const handleDownloadFile = async (file: CloudFile) => {
-    if (file.id.startsWith('local_file_') || file.storageKey?.startsWith('local_')) {
-      const blob = await getClientOfflineFileBlob(file.id, file.name);
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = file.name;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
+    try {
+      // 1. If local client-side offline file exists in IndexedDB
+      if (file.id.startsWith('local_file_')) {
+        const blob = await getClientOfflineFileBlob(file.id, file.name);
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = file.name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(url), 3000);
+          return;
+        }
+      }
+
+      // 2. Canonical server download URL
+      const downloadUrl = `/api/files/download/${encodeURIComponent(file.id)}`;
+
+      // Perform a check before triggering browser file save to prevent downloading error JSON
+      const checkRes = await fetch(downloadUrl, { method: 'HEAD' });
+      if (!checkRes.ok) {
+        let errorText = 'File not available on cloud storage.';
+        try {
+          const errRes = await fetch(downloadUrl);
+          const errJson = await errRes.json();
+          if (errJson.error) errorText = errJson.error;
+        } catch {}
+        alert(`Download failed: ${errorText}`);
         return;
       }
+
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err: any) {
+      console.error('Download failed:', err);
+      alert(`Download failed: ${err?.message || 'Network error'}`);
     }
-    const link = document.createElement('a');
-    link.href = `/api/files/download/${file.id}`;
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // Filter & Sort

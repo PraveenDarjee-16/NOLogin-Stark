@@ -12,8 +12,9 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await params;
-  const file = await db.getFileById(id);
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
+  const file = await db.getFileById(id, session.username);
   if (!file) {
     return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
@@ -30,9 +31,10 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
   const body = await req.json();
-  const file = await db.getFileById(id);
+  const file = await db.getFileById(id, session.username);
   if (!file) {
     return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
@@ -52,7 +54,7 @@ export async function PATCH(
     updates.trashDate = body.isTrash ? new Date().toISOString() : null;
   }
 
-  const updated = await db.updateFile(id, updates);
+  const updated = await db.updateFile(id, updates, session.username);
   return NextResponse.json({ success: true, file: updated });
 }
 
@@ -65,8 +67,9 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await params;
-  const file = await db.getFileById(id);
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
+  const file = await db.getFileById(id, session.username);
   if (!file) {
     return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
@@ -76,7 +79,7 @@ export async function DELETE(
   await provider.deleteFile(file.storageKey);
 
   // Delete from database
-  await db.deleteFilePermanently(id);
+  await db.deleteFilePermanently(id, session.username);
 
   return NextResponse.json({ success: true, message: 'File permanently deleted' });
 }

@@ -173,7 +173,7 @@ export default function WallpaperGalleryWindow({
     onSelectWallpaper(type, url);
   };
 
-  // Upload custom file from the current device (handles large videos > 4.5MB for Vercel)
+  // Upload custom file from the current device and persist to user account in the cloud
   const handleUploadFromDevice = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -185,52 +185,16 @@ export default function WallpaperGalleryWindow({
       file.name.toLowerCase().endsWith('.webm');
 
     try {
-      // 1. Immediately store in browser IndexedDB (wallpapers store)
+      // 1. Immediately store in browser IndexedDB for instant local preview
       const localResult = await saveClientWallpaper(file);
-
-      // Instant local preview on current device
       handleApply(isVid ? 'custom-video' : 'custom-image', `indexeddb://${localResult.id}`);
       setActiveCustomInfo({ name: file.name, size: file.size });
 
-      // 2. Upload file to server so other devices can stream and display this wallpaper
-      if (file.size <= 4 * 1024 * 1024) {
-        try {
-          const formData = new FormData();
-          formData.append('file', file);
-          const res = await fetch('/api/files', { method: 'POST', body: formData });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.file?.id) {
-              handleApply(
-                isVid ? 'custom-video' : 'custom-image',
-                `/api/files/download/${data.file.id}?preview=true`
-              );
-            }
-          }
-        } catch (serverErr) {
-          console.warn('Server wallpaper upload notice:', serverErr);
-        }
-      } else {
-        // Register metadata for large files > 4MB so server and other devices know file exists
-        try {
-          await fetch('/api/files', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              storageKey: `local_${localResult.id}`,
-              name: file.name,
-              size: file.size,
-              mimeType: file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
-              folderId: null,
-            }),
-          });
-        } catch (metaErr) {
-          console.warn('Metadata registration notice:', metaErr);
-        }
-      }
+      // 2. Upload file to backend so all other devices can stream and display this wallpaper
+      let uploadedToCloud = false;
 
-      // 3. If cloud direct upload is configured, also push to cloud
-      if (file.size > 3.5 * 1024 * 1024) {
+      // Try presigned cloud upload first if configured
+      if (file.size > 4 * 1024 * 1024) {
         try {
           const urlRes = await fetch('/api/storage/upload-url', {
             method: 'POST',
@@ -242,16 +206,50 @@ export default function WallpaperGalleryWindow({
           });
           const urlData = await urlRes.json();
           if (urlData.success && urlData.uploadUrl) {
-            await fetch(urlData.uploadUrl, {
-              method: 'PUT',
+            const uploadRes = await fetch(urlData.uploadUrl, {
+              method: urlData.uploadMethod || 'PUT',
               headers: {
                 'Content-Type': file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
               },
               body: file,
             });
+            if (uploadRes.ok) {
+              const regRes = await fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  storageKey: urlData.storageKey,
+                  name: file.name,
+                  size: file.size,
+                  mimeType: file.type || (isVid ? 'video/mp4' : 'image/jpeg'),
+                  folderId: null,
+                }),
+              });
+              const regData = await regRes.json();
+              if (regData.file?.id) {
+                const permanentUrl = `/api/files/download/${regData.file.id}?preview=true`;
+                handleApply(isVid ? 'custom-video' : 'custom-image', permanentUrl);
+                uploadedToCloud = true;
+              }
+            }
           }
         } catch (cloudErr) {
-          console.warn('Cloud sync in progress or fallback to browser storage:', cloudErr);
+          console.warn('Presigned wallpaper upload notice:', cloudErr);
+        }
+      }
+
+      // Fallback: standard multipart upload to /api/files
+      if (!uploadedToCloud) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/files', { method: 'POST', body: formData });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.file?.id) {
+            const permanentUrl = `/api/files/download/${data.file.id}?preview=true`;
+            handleApply(isVid ? 'custom-video' : 'custom-image', permanentUrl);
+            uploadedToCloud = true;
+          }
         }
       }
 
@@ -858,10 +856,10 @@ export default function WallpaperGalleryWindow({
                       className={`holo-btn ${isCurrent ? 'primary' : ''}`}
                       style={{ width: '100%', fontSize: '0.78rem' }}
                       onClick={() => {
-                        const targetUrl =
-                          file.id.startsWith('local_file_') || file.storageKey?.startsWith('local_')
-                            ? `indexeddb://${file.id}`
-                            : fileUrl;
+                        // Always use persistent authenticated cloud URL so the wallpaper syncs across all devices
+                        const targetUrl = file.id.startsWith('local_file_') && !file.storageKey
+                          ? `indexeddb://${file.id}`
+                          : fileUrl;
                         handleApply(isVid ? 'custom-video' : 'custom-image', targetUrl);
                       }}
                     >

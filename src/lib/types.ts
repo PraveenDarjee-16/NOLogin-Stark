@@ -24,6 +24,7 @@ export interface CloudFile {
   thumbnailUrl?: string;
   dataUrl?: string;
   isUploading?: boolean;
+  userId?: string;
 }
 
 export interface CloudFolder {
@@ -45,6 +46,7 @@ export interface CloudFolder {
   createdAt: string;
   updatedAt: string;
   isTrash?: boolean;
+  userId?: string;
 }
 
 export interface CloudNote {
@@ -56,6 +58,7 @@ export interface CloudNote {
   isTrash?: boolean;
   trashDate?: string | null;
   isFavorite?: boolean;
+  userId?: string;
 }
 
 export type ThemePreset =
@@ -83,6 +86,8 @@ export interface UserPreferences {
   hologramAmount: number; // 0 to 100
   storageCapacityGB: number; // e.g. 15
   desktopLayout?: 'grid' | 'free';
+  updatedAt?: number; // timestamp in ms for concurrency / conflict resolution
+  version?: number;
 }
 
 export interface StorageStats {

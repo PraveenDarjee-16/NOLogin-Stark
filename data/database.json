@@ -1,5 +1,51 @@
 {
-  "files": [],
+  "files": [
+    {
+      "id": "file_1792489440654_stark_arc_reactor_spec.txt",
+      "name": "stark_arc_reactor_spec.txt",
+      "size": 66,
+      "mimeType": "text/plain",
+      "category": "documents",
+      "folderId": null,
+      "storageKey": "1792489440654_stark_arc_reactor_spec.txt",
+      "storageProvider": "local",
+      "createdAt": "2026-10-20T09:44:00.653Z",
+      "updatedAt": "2026-10-20T09:44:00.653Z",
+      "userId": "admin",
+      "isFavorite": false,
+      "isTrash": false
+    },
+    {
+      "id": "file_1792494192166_WhatsApp_Image_2026-10-20_at_12.19.51.jpeg",
+      "name": "WhatsApp_Image_2026-10-20_at_12.19.51.jpeg",
+      "size": 88283,
+      "mimeType": "image/jpeg",
+      "category": "photos",
+      "folderId": null,
+      "storageKey": "1792494192166_WhatsApp_Image_2026-10-20_at_12.19.51.jpeg",
+      "storageProvider": "local",
+      "createdAt": "2026-10-20T11:03:12.167Z",
+      "updatedAt": "2026-10-20T11:03:12.168Z",
+      "userId": "admin",
+      "isFavorite": false,
+      "isTrash": false
+    },
+    {
+      "id": "file_1792497222493_amazing-spider.mp4",
+      "name": "amazing-spider.mp4",
+      "size": 91267858,
+      "mimeType": "video/mp4",
+      "category": "videos",
+      "folderId": null,
+      "storageKey": "1792497222493_amazing-spider.mp4",
+      "storageProvider": "local",
+      "createdAt": "2026-10-20T11:53:42.495Z",
+      "updatedAt": "2026-10-20T11:53:42.586Z",
+      "userId": "admin",
+      "isFavorite": false,
+      "isTrash": false
+    }
+  ],
   "folders": [
     {
       "id": "system-documents",
@@ -93,14 +139,42 @@
     }
   ],
   "preferences": {
-    "theme": "jarvis-cyan",
-    "wallpaperType": "spiderman-city",
-    "wallpaperBrightness": 0.85,
-    "hologramOpacity": 65,
-    "hologramAmount": 75,
+    "theme": "spiderman-suit",
+    "wallpaperType": "custom-video",
+    "wallpaperBrightness": 0.6,
+    "hologramOpacity": 97,
+    "hologramAmount": 32,
     "storageCapacityGB": 15,
-    "desktopLayout": "grid"
+    "desktopLayout": "grid",
+    "updatedAt": 1792604304572,
+    "version": 15,
+    "customWallpaperUrl": "/api/files/download/file_1792497222493_amazing-spider.mp4?preview=true"
   },
   "version": 1,
-  "notes": []
+  "notes": [],
+  "userPreferences": {
+    "admin": {
+      "theme": "spiderman-suit",
+      "wallpaperType": "custom-video",
+      "wallpaperBrightness": 0.6,
+      "hologramOpacity": 97,
+      "hologramAmount": 32,
+      "storageCapacityGB": 15,
+      "desktopLayout": "grid",
+      "updatedAt": 1792604304572,
+      "version": 15,
+      "customWallpaperUrl": "/api/files/download/file_1792497222493_amazing-spider.mp4?preview=true"
+    },
+    "praveen": {
+      "theme": "edith-stealth",
+      "wallpaperType": "edith-orbital",
+      "wallpaperBrightness": 0.6,
+      "hologramOpacity": 65,
+      "hologramAmount": 75,
+      "storageCapacityGB": 15,
+      "desktopLayout": "grid",
+      "updatedAt": 1792603754502,
+      "version": 1
+    }
+  }
 }

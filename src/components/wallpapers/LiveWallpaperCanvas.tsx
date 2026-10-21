@@ -14,12 +14,14 @@ interface Props {
   wallpaperType: LiveWallpaperType;
   customWallpaperUrl?: string;
   brightness: number;
+  isLoading?: boolean;
 }
 
 export default function LiveWallpaperCanvas({
   wallpaperType,
   customWallpaperUrl,
   brightness,
+  isLoading = false,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [resolvedUrl, setResolvedUrl] = useState<string | undefined>(
@@ -27,6 +29,8 @@ export default function LiveWallpaperCanvas({
       ? customWallpaperUrl
       : undefined
   );
+  const [activeImageUrl, setActiveImageUrl] = useState<string | undefined>(undefined);
+  const [isImageLoading, setIsImageLoading] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
 
@@ -149,6 +153,39 @@ export default function LiveWallpaperCanvas({
     }
   }, [wallpaperType, resolvedUrl]);
 
+  // Preload custom image before switching
+  useEffect(() => {
+    if (wallpaperType !== 'custom-image') {
+      return;
+    }
+    if (!resolvedUrl) {
+      return;
+    }
+
+    let isCancelled = false;
+    setIsImageLoading(true);
+
+    const img = new Image();
+    img.src = resolvedUrl;
+    img.onload = () => {
+      if (!isCancelled) {
+        setActiveImageUrl(resolvedUrl);
+        setIsImageLoading(false);
+        setMediaError(false);
+      }
+    };
+    img.onerror = () => {
+      if (!isCancelled) {
+        setIsImageLoading(false);
+        setMediaError(true);
+      }
+    };
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [wallpaperType, resolvedUrl]);
+
   // Tab visibility: pause video when tab hidden to save battery
   useEffect(() => {
     const handleVisibility = () => {
@@ -167,7 +204,7 @@ export default function LiveWallpaperCanvas({
 
   const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     if (!resolvedUrl || resolvedUrl.startsWith('indexeddb://')) return;
-    console.warn('Live wallpaper video failed to play or load, falling back to dynamic shader', e);
+    console.warn('Live wallpaper video failed to play or load', e);
     setMediaError(true);
   };
 
@@ -177,6 +214,32 @@ export default function LiveWallpaperCanvas({
     (resolvedUrl.startsWith('blob:') ||
       resolvedUrl.startsWith('http') ||
       resolvedUrl.startsWith('/'));
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          overflow: 'hidden',
+          filter: `brightness(${brightness})`,
+          transition: 'filter 0.3s ease',
+          background: 'radial-gradient(circle at center, #051430 0%, #020713 70%, #01040a 100%)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage:
+              'linear-gradient(rgba(0, 240, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 240, 255, 0.04) 1px, transparent 1px)',
+            backgroundSize: '40px 40px',
+            opacity: 0.6,
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -215,20 +278,60 @@ export default function LiveWallpaperCanvas({
       )}
 
       {/* Custom Image Wallpaper */}
-      {wallpaperType === 'custom-image' && isPlayableUrl && !mediaError && (
+      {wallpaperType === 'custom-image' && (activeImageUrl || resolvedUrl) && !mediaError && (
         <div
           style={{
             width: '100%',
             height: '100%',
-            backgroundImage: `url(${resolvedUrl})`,
+            backgroundImage: `url(${activeImageUrl || resolvedUrl})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         />
       )}
 
-      {/* Fallback if custom media fails on Vercel */}
-      {isCustom && (mediaError || !isPlayableUrl) && <SpiderManCityCanvas />}
+      {/* Standby display if custom asset is still resolving / loading or failed (NEVER flash default) */}
+      {isCustom && (mediaError || (!activeImageUrl && !isPlayableUrl)) && (
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            background: 'radial-gradient(circle at center, #061838 0%, #020713 70%, #01040a 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage:
+                'linear-gradient(rgba(0, 240, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 240, 255, 0.04) 1px, transparent 1px)',
+              backgroundSize: '40px 40px',
+              opacity: 0.6,
+            }}
+          />
+          {mediaError && (
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 2,
+                fontFamily: 'var(--font-hud)',
+                fontSize: '0.78rem',
+                letterSpacing: '0.1em',
+                color: 'rgba(0, 240, 255, 0.7)',
+                background: 'rgba(2, 6, 20, 0.85)',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: '1px solid rgba(0, 240, 255, 0.25)',
+              }}
+            >
+              // STARK PROTOCOL: CUSTOM WALLPAPER PRESERVED //
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

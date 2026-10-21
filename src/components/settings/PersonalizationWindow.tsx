@@ -18,6 +18,8 @@ interface Props {
   onSave: () => Promise<void>;
   onOpenWallpapers: () => void;
   onOpenHologramControls: () => void;
+  saveStatus?: 'idle' | 'saving' | 'saved' | 'error';
+  saveErrorMessage?: string | null;
 }
 
 interface ThemeItem {
@@ -65,14 +67,20 @@ export default function PersonalizationWindow({
   onSave,
   onOpenWallpapers,
   onOpenHologramControls,
+  saveStatus = 'idle',
+  saveErrorMessage = null,
 }: Props) {
-  const [isSaved, setIsSaved] = useState(false);
+  const [localSaved, setLocalSaved] = useState(false);
 
   const handleSave = async () => {
-    await onSave();
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    try {
+      await onSave();
+      setLocalSaved(true);
+      setTimeout(() => setLocalSaved(false), 2500);
+    } catch {}
   };
+
+  const isSavedState = localSaved || saveStatus === 'saved';
 
   return (
     <div
@@ -258,11 +266,40 @@ export default function PersonalizationWindow({
         </button>
       </div>
 
-      {/* Save Button */}
-      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--border-hud)', flexShrink: 0 }}>
+      {/* Save Button & Status Row */}
+      <div
+        style={{
+          marginTop: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: '16px',
+          borderTop: '1px solid var(--border-hud)',
+          flexShrink: 0,
+          gap: '12px',
+        }}
+      >
+        <div style={{ fontSize: '0.76rem', fontFamily: 'var(--font-hud)', letterSpacing: '0.05em' }}>
+          {saveStatus === 'saving' && (
+            <span style={{ color: 'var(--accent-gold)' }}>
+              // TRANSMITTING TELEMETRY TO CLOUD...
+            </span>
+          )}
+          {saveStatus === 'error' && (
+            <span style={{ color: '#ef4444' }}>
+              // {saveErrorMessage || 'CLOUD SYNC UNAVAILABLE — SAVED LOCALLY'}
+            </span>
+          )}
+          {saveStatus === 'saved' && (
+            <span style={{ color: '#10b981' }}>
+              // CLOUD TELEMETRY SYNCHRONIZED
+            </span>
+          )}
+        </div>
+
         <button className="holo-btn primary" onClick={handleSave}>
-          {isSaved ? <Check size={14} style={{ color: '#10b981' }} /> : <Shield size={14} />}
-          <span>{isSaved ? 'Preferences Saved to Cloud' : 'Save All Preferences'}</span>
+          {isSavedState ? <Check size={14} style={{ color: '#10b981' }} /> : <Shield size={14} />}
+          <span>{isSavedState ? 'Preferences Saved to Cloud' : 'Save All Preferences'}</span>
         </button>
       </div>
     </div>

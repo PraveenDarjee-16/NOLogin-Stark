@@ -4,7 +4,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, Music, Download } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
-import { getClientOfflineFileBlob } from '@/lib/client-storage';
+import { getClientOfflineFileBlob, getClientWallpaperBlob } from '@/lib/client-storage';
 
 interface Props {
   file: CloudFile;
@@ -24,22 +24,26 @@ export default function AudioPlayerWindow({ file }: Props) {
     let objectUrl: string | null = null;
     let isCancelled = false;
 
-    const isLocal =
-      file.id.startsWith('local_file_') ||
-      file.id.startsWith('client_wp_') ||
-      file.storageKey?.startsWith('local_');
-
-    if (isLocal) {
-      getClientOfflineFileBlob(file.id, file.name).then((blob) => {
+    async function loadSrc() {
+      try {
+        let blob = await getClientOfflineFileBlob(file.id, file.name);
+        if (!blob) {
+          blob = await getClientWallpaperBlob(file.id, file.name);
+        }
         if (blob && !isCancelled) {
           setLocalBlob(blob);
           objectUrl = URL.createObjectURL(blob);
           setAudioSrc(objectUrl);
+          return;
         }
-      });
-    } else {
-      setAudioSrc(`/api/files/download/${file.id}?preview=true`);
+      } catch {}
+
+      if (!isCancelled) {
+        setAudioSrc(`/api/files/download/${encodeURIComponent(file.id)}?preview=true`);
+      }
     }
+
+    loadSrc();
 
     return () => {
       isCancelled = true;
@@ -223,7 +227,7 @@ export default function AudioPlayerWindow({ file }: Props) {
                   setTimeout(() => URL.revokeObjectURL(url), 2000);
                 } else {
                   const link = document.createElement('a');
-                  link.href = `/api/files/download/${file.id}`;
+                  link.href = `/api/files/download/${encodeURIComponent(file.id)}`;
                   link.download = file.name;
                   document.body.appendChild(link);
                   link.click();

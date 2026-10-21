@@ -80,12 +80,19 @@ export class S3StorageProvider {
     }
   }
 
-  async getSignedUrl(storageKey: string, expiresIn = 3600): Promise<string | null> {
+  async getSignedUrl(
+    storageKey: string,
+    expiresIn = 3600,
+    downloadFilename?: string
+  ): Promise<string | null> {
     if (!this.client) return null;
     try {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: storageKey,
+        ResponseContentDisposition: downloadFilename
+          ? `attachment; filename="${downloadFilename.replace(/[^\x20-\x7E]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(downloadFilename)}`
+          : undefined,
       });
       return await getSignedUrl(this.client, command, { expiresIn });
     } catch {

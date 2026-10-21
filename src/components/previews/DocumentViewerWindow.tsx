@@ -31,29 +31,42 @@ export default function DocumentViewerWindow({ file }: Props) {
   useEffect(() => {
     let activeUrl: string | null = null;
 
-    if (file.id.startsWith('local_file_')) {
-      getClientOfflineFileBlob(file.id).then((blob) => {
-        if (!blob) return;
-        if (isTextLike && !isPdf) {
-          setIsLoading(true);
-          blob
-            .text()
-            .then((text) => setTextContent(text))
-            .catch((err) => setTextContent(`Error loading document content: ${err?.message}`))
-            .finally(() => setIsLoading(false));
-        } else if (isPdf) {
-          activeUrl = URL.createObjectURL(blob);
-          setLocalBlobUrl(activeUrl);
+    async function loadDoc() {
+      if (file.id.startsWith('local_file_')) {
+        const blob = await getClientOfflineFileBlob(file.id);
+        if (blob) {
+          if (isTextLike && !isPdf) {
+            setIsLoading(true);
+            try {
+              const text = await blob.text();
+              setTextContent(text);
+            } catch (err: any) {
+              setTextContent(`Error loading document content: ${err?.message}`);
+            } finally {
+              setIsLoading(false);
+            }
+          } else if (isPdf) {
+            activeUrl = URL.createObjectURL(blob);
+            setLocalBlobUrl(activeUrl);
+          }
+          return;
         }
-      });
-    } else if (isTextLike && !isPdf) {
-      setIsLoading(true);
-      fetch(`/api/files/download/${file.id}?preview=true`)
-        .then((res) => res.text())
-        .then((text) => setTextContent(text))
-        .catch((err) => setTextContent(`Error loading document content: ${err?.message}`))
-        .finally(() => setIsLoading(false));
+      }
+
+      if (isTextLike && !isPdf) {
+        setIsLoading(true);
+        fetch(`/api/files/download/${encodeURIComponent(file.id)}?preview=true`)
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.text();
+          })
+          .then((text) => setTextContent(text))
+          .catch((err) => setTextContent(`Error loading document content: ${err?.message}`))
+          .finally(() => setIsLoading(false));
+      }
     }
+
+    loadDoc();
 
     return () => {
       if (activeUrl) URL.revokeObjectURL(activeUrl);
@@ -127,7 +140,7 @@ export default function DocumentViewerWindow({ file }: Props) {
             </button>
           ) : (
             <a
-              href={`/api/files/download/${file.id}`}
+              href={`/api/files/download/${encodeURIComponent(file.id)}`}
               download={file.name}
               className="holo-btn"
               style={{ padding: '4px 10px', fontSize: '0.72rem' }}
@@ -143,7 +156,7 @@ export default function DocumentViewerWindow({ file }: Props) {
       <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
         {isPdf ? (
           <iframe
-            src={localBlobUrl || `/api/files/download/${file.id}?preview=true`}
+            src={localBlobUrl || `/api/files/download/${encodeURIComponent(file.id)}?preview=true`}
             title={file.name}
             style={{
               width: '100%',
@@ -205,7 +218,7 @@ export default function DocumentViewerWindow({ file }: Props) {
               This file ({file.mimeType}) cannot be directly rendered inside the browser viewport. You can download and inspect it locally.
             </div>
             <a
-              href={`/api/files/download/${file.id}`}
+              href={`/api/files/download/${encodeURIComponent(file.id)}`}
               download={file.name}
               className="holo-btn primary"
             >

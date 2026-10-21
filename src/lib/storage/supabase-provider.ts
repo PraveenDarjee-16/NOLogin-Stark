@@ -79,11 +79,19 @@ export class SupabaseStorageProvider {
     return !error;
   }
 
-  async getSignedUrl(storageKey: string, expiresIn = 3600): Promise<string | null> {
+  async getSignedUrl(
+    storageKey: string,
+    expiresIn = 3600,
+    downloadFilename?: string
+  ): Promise<string | null> {
     if (!this.client) return null;
     const { data, error } = await this.client.storage
       .from(this.bucketName)
-      .createSignedUrl(storageKey, expiresIn);
+      .createSignedUrl(
+        storageKey,
+        expiresIn,
+        downloadFilename ? { download: downloadFilename } : undefined
+      );
 
     if (error || !data) return null;
     return data.signedUrl;

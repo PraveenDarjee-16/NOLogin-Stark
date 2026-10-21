@@ -11,6 +11,7 @@ import {
   Sliders,
   Folder,
   Zap,
+  Terminal,
 } from 'lucide-react';
 import { StorageStats } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
@@ -20,6 +21,8 @@ interface Props {
   storageStats: StorageStats | null;
   isCrazyMode: boolean;
   onToggleCrazy: () => void;
+  isHackerMode: boolean;
+  onToggleHacker: () => void;
   onOpenSettings: () => void;
   onOpenWallpapers: () => void;
   onOpenHologramControls: () => void;
@@ -32,6 +35,8 @@ export default function TelemetryHeader({
   storageStats,
   isCrazyMode,
   onToggleCrazy,
+  isHackerMode,
+  onToggleHacker,
   onOpenSettings,
   onOpenWallpapers,
   onOpenHologramControls,
@@ -108,8 +113,23 @@ export default function TelemetryHeader({
         </div>
       </div>
 
-      {/* Quick Launch, CRAZY Button & Logout Controls */}
+      {/* Quick Launch, HACKER & CRAZY Buttons & Logout Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* HACKER Cyber Breach Simulation Button */}
+        <button
+          className={`hacker-btn ${isHackerMode ? 'active' : ''}`}
+          onClick={onToggleHacker}
+          title={
+            isHackerMode
+              ? 'HACKER Mode Active (Click again, press Enter, or double-click to abort simulation)'
+              : 'HACKER Mode: Cinematic 5s Cyber Breach & Live System Takeover Simulation'
+          }
+          aria-label="Toggle Hacker Mode"
+        >
+          <Terminal size={13} style={{ color: isHackerMode ? '#ffffff' : 'var(--accent-cyan)' }} />
+          <span>{isHackerMode ? 'BREACHED' : 'HACKER'}</span>
+        </button>
+
         {/* CRAZY Animation Mode Button */}
         <button
           className={`crazy-btn ${isCrazyMode ? 'active' : ''}`}

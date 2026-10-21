@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { getStorageProvider } from '@/lib/storage';
-import { getFileCategory, generateId } from '@/lib/utils';
+import { getFileCategory, generateId, getMimeTypeFromFilename } from '@/lib/utils';
 import { CloudFile } from '@/lib/types';
+
+export const maxDuration = 120;
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
@@ -19,7 +22,7 @@ export async function GET(req: NextRequest) {
   const trashOnly = searchParams.get('trash') === 'true';
   const recentOnly = searchParams.get('recent') === 'true';
 
-  let files = await db.getFiles();
+  let files = await db.getFiles(session.username);
 
   if (trashOnly) {
     files = files.filter((f) => f.isTrash);
@@ -73,12 +76,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const fileMime = mimeType || 'application/octet-stream';
+      const fileMime = mimeType || getMimeTypeFromFilename(name);
       const category = getFileCategory(fileMime, name);
       const { type } = getStorageProvider();
 
+      const fileId = generateId('file');
       const newFile: CloudFile = {
-        id: generateId('file'),
+        id: fileId,
         name,
         size: Number(size) || 0,
         mimeType: fileMime,
@@ -88,10 +92,11 @@ export async function POST(req: NextRequest) {
         storageProvider: type,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        userId: session.username,
         isFavorite: false,
         isTrash: false,
         dataUrl: dataUrl || undefined,
-        publicUrl: dataUrl || undefined,
+        publicUrl: `/api/files/download/${fileId}?preview=true`,
       };
 
       await db.addFile(newFile);
@@ -111,20 +116,21 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
     const sanitizedName = file.name.replace(/[^\w.-]/g, '_');
     const storageKey = `${Date.now()}_${sanitizedName}`;
-    const mimeType = file.type || 'application/octet-stream';
+    const mimeType = file.type || getMimeTypeFromFilename(file.name);
     const category = getFileCategory(mimeType, file.name);
 
     const { provider, type } = getStorageProvider();
     const uploadResult = await provider.uploadFile(buffer, storageKey, mimeType);
 
-    // Keep dataUrl for files <= 3.5MB to guarantee persistence across ephemeral Vercel lambdas
+    // Keep dataUrl only for very small images <= 1MB as cache fallback
     const dataUrl =
-      file.size <= 3.5 * 1024 * 1024
+      file.size <= 1024 * 1024 && mimeType.startsWith('image/')
         ? `data:${mimeType};base64,${buffer.toString('base64')}`
         : undefined;
 
+    const fileId = generateId('file');
     const newFile: CloudFile = {
-      id: generateId('file'),
+      id: fileId,
       name: file.name,
       size: file.size,
       mimeType,
@@ -134,9 +140,10 @@ export async function POST(req: NextRequest) {
       storageProvider: type,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      userId: session.username,
       isFavorite: false,
       isTrash: false,
-      publicUrl: uploadResult.publicUrl || dataUrl,
+      publicUrl: `/api/files/download/${fileId}?preview=true`,
       dataUrl,
     };
 

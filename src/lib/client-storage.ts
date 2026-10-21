@@ -443,19 +443,34 @@ export async function deleteClientOfflineFile(id: string): Promise<boolean> {
 // PREFERENCES CACHE
 // ==========================================
 
-export function saveClientPreferences(prefs: Partial<UserPreferences>) {
+export function saveClientPreferences(
+  prefs: Partial<UserPreferences>,
+  username = 'admin'
+) {
   if (typeof window === 'undefined') return;
   try {
-    const current = getClientPreferences() || {};
-    const updated = { ...current, ...prefs };
-    localStorage.setItem('stark_desktop_preferences', JSON.stringify(updated));
+    const u = (username || 'admin').trim().toLowerCase();
+    const key = `stark_desktop_preferences_${u}`;
+    const raw = localStorage.getItem(key);
+    let current: Partial<UserPreferences> = {};
+    if (raw) {
+      try {
+        current = JSON.parse(raw);
+      } catch {}
+    }
+    const updated = { ...current, ...prefs, updatedAt: Date.now() };
+    localStorage.setItem(key, JSON.stringify(updated));
   } catch {}
 }
 
-export function getClientPreferences(): Partial<UserPreferences> | null {
+export function getClientPreferences(
+  username = 'admin'
+): Partial<UserPreferences> | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem('stark_desktop_preferences');
+    const u = (username || 'admin').trim().toLowerCase();
+    const key = `stark_desktop_preferences_${u}`;
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {

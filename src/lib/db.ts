@@ -3,12 +3,15 @@ import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
 import { CloudFile, CloudFolder, CloudNote, UserPreferences } from './types';
+import { getFileCategory, getMimeTypeFromFilename, generateId } from './utils';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 interface DatabaseSchema {
   files: CloudFile[];
   folders: CloudFolder[];
   notes: CloudNote[];
   preferences: UserPreferences;
+  userPreferences?: Record<string, UserPreferences>;
   version: number;
 }
 
@@ -115,10 +118,9 @@ const SYSTEM_FOLDERS: CloudFolder[] = [
   },
 ];
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
 class Database {
   private dbPath: string;
+  private storageDir: string;
   private memoryCache: DatabaseSchema | null = null;
   private lastLoadTime = 0;
   private readonly CACHE_TTL_MS = 2000;
@@ -129,8 +131,10 @@ class Database {
   constructor() {
     if (process.env.VERCEL) {
       this.dbPath = path.join(os.tmpdir(), 'database.json');
+      this.storageDir = path.join(os.tmpdir(), 'stark-storage');
     } else {
       this.dbPath = path.join(process.cwd(), 'data', 'database.json');
+      this.storageDir = path.join(process.cwd(), 'data', 'storage');
     }
 
     const supabaseUrl = process.env.SUPABASE_URL;
@@ -145,6 +149,78 @@ class Database {
         console.warn('Supabase DB sync client initialization failed:', err);
       }
     }
+  }
+
+  /**
+   * Automatically scans storage disk directory for any existing files that are not
+   * yet recorded in the database schema. This guarantees persistent recovery of
+   * large videos (like amazing-spider.mp4) or previously uploaded files.
+   */
+  private syncStorageDirectory(schema: DatabaseSchema): boolean {
+    let modified = false;
+    try {
+      if (!fsSync.existsSync(this.storageDir)) {
+        return false;
+      }
+
+      const entries = fsSync.readdirSync(this.storageDir, { withFileTypes: true });
+      const existingStorageKeys = new Set(schema.files.map((f) => f.storageKey));
+      const existingNames = new Set(schema.files.map((f) => f.name.toLowerCase()));
+
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const storageKey = entry.name;
+
+        // Skip internal/hidden files
+        if (storageKey.startsWith('.') || storageKey.startsWith('_')) continue;
+
+        if (!existingStorageKeys.has(storageKey)) {
+          try {
+            const filePath = path.join(this.storageDir, storageKey);
+            const stat = fsSync.statSync(filePath);
+            if (stat.size <= 0) continue;
+
+            // Extract human-readable filename by removing leading timestamp prefix if present
+            const cleanName = storageKey.replace(/^\d+_/, '') || storageKey;
+
+            // Don't duplicate if file with exact name and size is already registered
+            const alreadyExists = schema.files.some(
+              (f) => f.name.toLowerCase() === cleanName.toLowerCase() && f.size === stat.size
+            );
+            if (alreadyExists) continue;
+
+            const mimeType = getMimeTypeFromFilename(cleanName);
+            const category = getFileCategory(mimeType, cleanName);
+
+            const recoveredFile: CloudFile = {
+              id: `file_${storageKey.replace(/[^\w.-]/g, '_')}`,
+              name: cleanName,
+              size: stat.size,
+              mimeType,
+              category,
+              folderId: null,
+              storageKey,
+              storageProvider: 'local',
+              createdAt: stat.birthtime?.toISOString() || stat.mtime.toISOString(),
+              updatedAt: stat.mtime.toISOString(),
+              userId: 'admin',
+              isFavorite: false,
+              isTrash: false,
+            };
+
+            schema.files.push(recoveredFile);
+            existingStorageKeys.add(storageKey);
+            existingNames.add(cleanName.toLowerCase());
+            modified = true;
+          } catch (entryErr) {
+            console.warn('Could not inspect storage file for recovery:', storageKey, entryErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Storage directory auto-sync notice:', err);
+    }
+    return modified;
   }
 
   private async load(force = false): Promise<DatabaseSchema> {
@@ -162,7 +238,7 @@ class Database {
 
         if (data && !error) {
           const raw = await data.text();
-          const parsed = JSON.parse(raw);
+          const parsed: DatabaseSchema = JSON.parse(raw);
           const folderIds = new Set(parsed.folders?.map((f: CloudFolder) => f.id) || []);
           parsed.folders = parsed.folders || [];
           for (const sys of SYSTEM_FOLDERS) {
@@ -173,9 +249,14 @@ class Database {
           parsed.files = parsed.files || [];
           parsed.notes = parsed.notes || [];
           parsed.preferences = parsed.preferences || { ...DEFAULT_PREFERENCES };
+          parsed.userPreferences = parsed.userPreferences || {};
 
+          const modified = this.syncStorageDirectory(parsed);
           this.memoryCache = parsed;
           this.lastLoadTime = Date.now();
+          if (modified) {
+            await this.persist();
+          }
           return parsed;
         }
       } catch (cloudErr) {
@@ -197,7 +278,7 @@ class Database {
 
       if (fsSync.existsSync(this.dbPath)) {
         const raw = await fs.readFile(this.dbPath, 'utf-8');
-        const data = JSON.parse(raw);
+        const data: DatabaseSchema = JSON.parse(raw);
         // Ensure system folders are present
         const folderIds = new Set(data.folders?.map((f: CloudFolder) => f.id) || []);
         data.folders = data.folders || [];
@@ -209,9 +290,14 @@ class Database {
         data.files = data.files || [];
         data.notes = data.notes || [];
         data.preferences = data.preferences || { ...DEFAULT_PREFERENCES };
+        data.userPreferences = data.userPreferences || {};
 
+        const modified = this.syncStorageDirectory(data);
         this.memoryCache = data;
         this.lastLoadTime = Date.now();
+        if (modified) {
+          await this.persist();
+        }
         return data;
       }
     } catch (e) {
@@ -223,8 +309,13 @@ class Database {
       folders: [...SYSTEM_FOLDERS],
       notes: [],
       preferences: { ...DEFAULT_PREFERENCES },
+      userPreferences: {
+        admin: { ...DEFAULT_PREFERENCES },
+      },
       version: 1,
     };
+
+    this.syncStorageDirectory(initial);
     this.memoryCache = initial;
     this.lastLoadTime = Date.now();
     await this.persist();
@@ -266,29 +357,104 @@ class Database {
   }
 
   // --- Files ---
-  async getFiles(): Promise<CloudFile[]> {
+  async getFiles(username?: string): Promise<CloudFile[]> {
     const db = await this.load();
-    return db.files;
+    if (!username || username === 'admin') {
+      return db.files;
+    }
+    const u = username.toLowerCase();
+    // Return files owned by user or unassigned legacy files
+    return db.files.filter((f) => !f.userId || f.userId.toLowerCase() === u);
   }
 
-  async getFileById(id: string): Promise<CloudFile | null> {
+  async getFileById(id: string, username?: string): Promise<CloudFile | null> {
     const db = await this.load();
-    return db.files.find((f) => f.id === id) || null;
+    const cleanId = id.replace(/^indexeddb:\/\//, '').replace(/^local_/, '');
+    const file =
+      db.files.find(
+        (f) =>
+          f.id === id ||
+          f.id === cleanId ||
+          f.storageKey === id ||
+          f.storageKey === cleanId ||
+          `local_${f.id}` === id ||
+          `local_${f.storageKey}` === id
+      ) || null;
+
+    if (!file) return null;
+    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
+      return null;
+    }
+    return file;
+  }
+
+  async getFileByStorageKey(key: string, username?: string): Promise<CloudFile | null> {
+    const db = await this.load();
+    const cleanKey = key.replace(/^local_/, '');
+    const file =
+      db.files.find(
+        (f) =>
+          f.storageKey === key ||
+          f.storageKey === cleanKey ||
+          f.id === key ||
+          f.id === cleanKey
+      ) || null;
+
+    if (!file) return null;
+    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
+      return null;
+    }
+    return file;
   }
 
   async addFile(file: CloudFile): Promise<CloudFile> {
     const db = await this.load();
+    // Avoid creating duplicate database entries
+    const existingIdx = db.files.findIndex(
+      (f) =>
+        f.id === file.id ||
+        (f.storageKey === file.storageKey && f.storageKey !== '') ||
+        (f.name.toLowerCase() === file.name.toLowerCase() && f.size === file.size && f.size > 0)
+    );
+
+    if (existingIdx >= 0) {
+      db.files[existingIdx] = {
+        ...db.files[existingIdx],
+        ...file,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.persist();
+      return db.files[existingIdx];
+    }
+
     db.files.push(file);
     await this.persist();
     return file;
   }
 
-  async updateFile(id: string, updates: Partial<CloudFile>): Promise<CloudFile | null> {
+  async updateFile(
+    id: string,
+    updates: Partial<CloudFile>,
+    username?: string
+  ): Promise<CloudFile | null> {
     const db = await this.load();
-    const idx = db.files.findIndex((f) => f.id === id);
+    const cleanId = id.replace(/^indexeddb:\/\//, '').replace(/^local_/, '');
+    const idx = db.files.findIndex(
+      (f) =>
+        f.id === id ||
+        f.id === cleanId ||
+        f.storageKey === id ||
+        f.storageKey === cleanId
+    );
     if (idx === -1) return null;
+
+    const file = db.files[idx];
+    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
+      return null;
+    }
+
     db.files[idx] = {
-      ...db.files[idx],
+      ...file,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
@@ -296,21 +462,35 @@ class Database {
     return db.files[idx];
   }
 
-  async deleteFilePermanently(id: string): Promise<boolean> {
+  async deleteFilePermanently(id: string, username?: string): Promise<boolean> {
     const db = await this.load();
-    const prevLen = db.files.length;
-    db.files = db.files.filter((f) => f.id !== id);
-    if (db.files.length !== prevLen) {
-      await this.persist();
-      return true;
+    const cleanId = id.replace(/^indexeddb:\/\//, '').replace(/^local_/, '');
+    const file = db.files.find(
+      (f) =>
+        f.id === id ||
+        f.id === cleanId ||
+        f.storageKey === id ||
+        f.storageKey === cleanId
+    );
+    if (!file) return false;
+
+    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
+      return false;
     }
-    return false;
+
+    db.files = db.files.filter((f) => f.id !== file.id);
+    await this.persist();
+    return true;
   }
 
   // --- Folders ---
-  async getFolders(): Promise<CloudFolder[]> {
+  async getFolders(username?: string): Promise<CloudFolder[]> {
     const db = await this.load();
-    return db.folders;
+    if (!username || username === 'admin') {
+      return db.folders;
+    }
+    const u = username.toLowerCase();
+    return db.folders.filter((f) => f.isSystem || !f.userId || f.userId.toLowerCase() === u);
   }
 
   async getFolderById(id: string): Promise<CloudFolder | null> {
@@ -353,9 +533,14 @@ class Database {
   }
 
   // --- Notes (Text Saver) ---
-  async getNotes(): Promise<CloudNote[]> {
+  async getNotes(username?: string): Promise<CloudNote[]> {
     const db = await this.load();
-    return db.notes || [];
+    const notes = db.notes || [];
+    if (!username || username === 'admin') {
+      return notes;
+    }
+    const u = username.toLowerCase();
+    return notes.filter((n) => !n.userId || n.userId.toLowerCase() === u);
   }
 
   async getNoteById(id: string): Promise<CloudNote | null> {
@@ -400,22 +585,95 @@ class Database {
     return false;
   }
 
-  // --- Preferences ---
-  async getPreferences(): Promise<UserPreferences> {
+  // --- Preferences (Per-user persistent isolation) ---
+  async getPreferences(username?: string): Promise<UserPreferences> {
     const db = await this.load();
-    return db.preferences || { ...DEFAULT_PREFERENCES };
+    const u = username?.trim().toLowerCase();
+    if (u && db.userPreferences && db.userPreferences[u]) {
+      const p = db.userPreferences[u];
+      return {
+        ...DEFAULT_PREFERENCES,
+        ...p,
+        wallpaperBrightness:
+          typeof p.wallpaperBrightness === 'number' && !isNaN(p.wallpaperBrightness)
+            ? p.wallpaperBrightness
+            : DEFAULT_PREFERENCES.wallpaperBrightness,
+        updatedAt: p.updatedAt || Date.now(),
+        version: p.version || 1,
+      };
+    }
+    const globalPrefs = db.preferences || DEFAULT_PREFERENCES;
+    return {
+      ...DEFAULT_PREFERENCES,
+      ...globalPrefs,
+      wallpaperBrightness:
+        typeof globalPrefs.wallpaperBrightness === 'number' && !isNaN(globalPrefs.wallpaperBrightness)
+          ? globalPrefs.wallpaperBrightness
+          : DEFAULT_PREFERENCES.wallpaperBrightness,
+      updatedAt: globalPrefs.updatedAt || Date.now(),
+      version: globalPrefs.version || 1,
+    };
   }
 
   async updatePreferences(
+    username: string,
     updates: Partial<UserPreferences>
   ): Promise<UserPreferences> {
     const db = await this.load();
+    const u = (username || 'admin').trim().toLowerCase();
+    db.userPreferences = db.userPreferences || {};
+
+    const current =
+      db.userPreferences[u] || db.preferences || { ...DEFAULT_PREFERENCES };
+
+    // Validate and sanitize numeric fields
+    const sanitizedUpdates: Partial<UserPreferences> = { ...updates };
+    if (sanitizedUpdates.wallpaperBrightness !== undefined) {
+      const b = Number(sanitizedUpdates.wallpaperBrightness);
+      if (!isNaN(b)) {
+        sanitizedUpdates.wallpaperBrightness = Math.max(0.2, Math.min(1.0, Math.round(b * 100) / 100));
+      } else {
+        delete sanitizedUpdates.wallpaperBrightness;
+      }
+    }
+    if (sanitizedUpdates.hologramOpacity !== undefined) {
+      const op = Number(sanitizedUpdates.hologramOpacity);
+      if (!isNaN(op)) {
+        sanitizedUpdates.hologramOpacity = Math.max(0, Math.min(100, Math.round(op)));
+      } else {
+        delete sanitizedUpdates.hologramOpacity;
+      }
+    }
+    if (sanitizedUpdates.hologramAmount !== undefined) {
+      const am = Number(sanitizedUpdates.hologramAmount);
+      if (!isNaN(am)) {
+        sanitizedUpdates.hologramAmount = Math.max(0, Math.min(100, Math.round(am)));
+      } else {
+        delete sanitizedUpdates.hologramAmount;
+      }
+    }
+
+    const nextVersion = (current.version || 0) + 1;
+    const now = Date.now();
+
+    const merged: UserPreferences = {
+      ...current,
+      ...sanitizedUpdates,
+      updatedAt: now,
+      version: nextVersion,
+    };
+
+    db.userPreferences[u] = merged;
+    // Keep global preferences in sync as fallback
     db.preferences = {
       ...db.preferences,
-      ...updates,
+      ...sanitizedUpdates,
+      updatedAt: now,
+      version: nextVersion,
     };
+
     await this.persist();
-    return db.preferences;
+    return merged;
   }
 }
 

@@ -26,6 +26,7 @@ import VideoPlayerWindow from '../previews/VideoPlayerWindow';
 import AudioPlayerWindow from '../previews/AudioPlayerWindow';
 import DocumentViewerWindow from '../previews/DocumentViewerWindow';
 import SpiderWebRecallOverlay from './SpiderWebRecallOverlay';
+import HackerModeOverlay from './HackerModeOverlay';
 import {
   saveClientPreferences,
   getClientPreferences,
@@ -66,7 +67,35 @@ const RIGHT_SHORTCUTS: DesktopShortcut[] = [
 ];
 
 export default function Desktop({ username, onLogout }: Props) {
-  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFS);
+  const [preferences, setPreferences] = useState<UserPreferences>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = getClientPreferences(username);
+      if (cached) {
+        return { ...DEFAULT_PREFS, ...cached };
+      }
+    }
+    return DEFAULT_PREFS;
+  });
+  const [isPreferencesLoaded, setIsPreferencesLoaded] = useState(false);
+
+  // Wallpaper Lifecycle Status: 'loading' | 'ready' | 'error'
+  const [wallpaperStatus, setWallpaperStatus] = useState<'loading' | 'ready' | 'error'>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = getClientPreferences(username);
+      if (cached && cached.wallpaperType) {
+        return 'ready';
+      }
+    }
+    return 'loading';
+  });
+
+  // Anti-conflict & debounced save tracking
+  const lastLocalMutationRef = useRef<number>(0);
+  const pendingUpdatesRef = useRef<Partial<UserPreferences>>({});
+  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+
   const [folders, setFolders] = useState<CloudFolder[]>([]);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(() => {
     if (typeof window !== 'undefined') {
@@ -96,15 +125,50 @@ export default function Desktop({ username, onLogout }: Props) {
     crazyTimersRef.current = [];
   };
 
+  // HACKER Mode State (5-second cinematic entrance + persistent breach simulation)
+  const [isHackerMode, setIsHackerMode] = useState(false);
+  const [hackerPhase, setHackerPhase] = useState<'entrance' | 'simulation' | null>(null);
+  const hackerEntranceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearHackerTimers = () => {
+    if (hackerEntranceTimerRef.current) {
+      clearTimeout(hackerEntranceTimerRef.current);
+      hackerEntranceTimerRef.current = null;
+    }
+  };
+
+  const handleToggleHacker = () => {
+    if (isHackerMode) {
+      handleExitHacker();
+    } else {
+      clearHackerTimers();
+      setIsHackerMode(true);
+      setHackerPhase('entrance');
+      // Transition from 5s entrance to persistent simulation
+      hackerEntranceTimerRef.current = setTimeout(() => {
+        setHackerPhase('simulation');
+      }, 5000);
+    }
+  };
+
+  const handleExitHacker = () => {
+    clearHackerTimers();
+    setIsHackerMode(false);
+    setHackerPhase(null);
+  };
+
   // Hidden upload input for desktop taskbar quick upload
   const desktopUploadRef = useRef<HTMLInputElement | null>(null);
 
   // Fetch initial preferences, folders, and storage stats
   const fetchPreferences = async () => {
-    // 1. Instantly apply cached client preferences to avoid theme/wallpaper flash or Vercel resets
-    const cached = getClientPreferences();
+    // 1. Instantly apply cached client preferences for this user if present
+    const cached = getClientPreferences(username);
     if (cached) {
       setPreferences((prev) => ({ ...prev, ...cached }));
+      if (cached.wallpaperType) {
+        setWallpaperStatus('ready');
+      }
       if (cached.theme) document.documentElement.setAttribute('data-theme', cached.theme);
       if (cached.hologramOpacity !== undefined) {
         document.documentElement.style.setProperty(
@@ -128,28 +192,42 @@ export default function Desktop({ username, onLogout }: Props) {
 
     try {
       const res = await fetch('/api/preferences');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.preferences) {
-        // Server preferences take precedence over stale cached preferences
-        const merged = cached ? { ...cached, ...data.preferences } : data.preferences;
-        setPreferences(merged);
-        saveClientPreferences(merged);
-        document.documentElement.setAttribute('data-theme', merged.theme);
-        document.documentElement.style.setProperty(
-          '--hologram-opacity',
-          (merged.hologramOpacity / 100).toString()
-        );
-        document.documentElement.style.setProperty(
-          '--hologram-amount',
-          (merged.hologramAmount / 100).toString()
-        );
-        document.documentElement.style.setProperty(
-          '--wallpaper-brightness',
-          merged.wallpaperBrightness.toString()
-        );
+        const serverPrefs = data.preferences;
+        // Stale response guard: If user interacted while network was in-flight, do not overwrite!
+        if (Date.now() - lastLocalMutationRef.current > 3000) {
+          setPreferences(serverPrefs);
+          saveClientPreferences(serverPrefs, username);
+          if (serverPrefs.theme) document.documentElement.setAttribute('data-theme', serverPrefs.theme);
+          if (serverPrefs.hologramOpacity !== undefined) {
+            document.documentElement.style.setProperty(
+              '--hologram-opacity',
+              (serverPrefs.hologramOpacity / 100).toString()
+            );
+          }
+          if (serverPrefs.hologramAmount !== undefined) {
+            document.documentElement.style.setProperty(
+              '--hologram-amount',
+              (serverPrefs.hologramAmount / 100).toString()
+            );
+          }
+          if (serverPrefs.wallpaperBrightness !== undefined) {
+            document.documentElement.style.setProperty(
+              '--wallpaper-brightness',
+              serverPrefs.wallpaperBrightness.toString()
+            );
+          }
+        }
+        setWallpaperStatus('ready');
       }
     } catch (e) {
       console.error('Failed to load preferences from server, active via local client cache:', e);
+      // DO NOT overwrite with default wallpaper! Keep current cached or valid state
+      setWallpaperStatus((prev) => (prev === 'loading' ? 'ready' : prev));
+    } finally {
+      setIsPreferencesLoaded(true);
     }
   };
 
@@ -272,14 +350,27 @@ export default function Desktop({ username, onLogout }: Props) {
   // Real-time synchronization across devices (wallpapers, themes, and calibration)
   useEffect(() => {
     const syncInterval = setInterval(async () => {
+      // Guard: Do not poll or clobber if user recently interacted (< 4500ms) or has uncommitted saves
+      if (Date.now() - lastLocalMutationRef.current < 4500) return;
+      if (Object.keys(pendingUpdatesRef.current).length > 0) return;
+
       try {
         const res = await fetch('/api/preferences');
         if (!res.ok) return;
         const data = await res.json();
         if (!data.preferences) return;
 
+        // Verify again after network roundtrip that user hasn't made new changes
+        if (Date.now() - lastLocalMutationRef.current < 4500) return;
+
+        const p = data.preferences;
+
         setPreferences((prev) => {
-          const p = data.preferences;
+          // If server preference is older than or equal to our local mutation timestamp, ignore it
+          if (p.updatedAt && prev.updatedAt && p.updatedAt <= prev.updatedAt) {
+            return prev;
+          }
+
           const isDiff =
             prev.wallpaperType !== p.wallpaperType ||
             prev.customWallpaperUrl !== p.customWallpaperUrl ||
@@ -290,7 +381,7 @@ export default function Desktop({ username, onLogout }: Props) {
 
           if (isDiff) {
             const updated = { ...prev, ...p };
-            saveClientPreferences(updated);
+            saveClientPreferences(updated, username);
             return updated;
           }
           return prev;
@@ -299,7 +390,7 @@ export default function Desktop({ username, onLogout }: Props) {
     }, 3000);
 
     return () => clearInterval(syncInterval);
-  }, []);
+  }, [username]);
 
   // Update theme & CSS variables when preferences change
   useEffect(() => {
@@ -531,21 +622,104 @@ export default function Desktop({ username, onLogout }: Props) {
     }
   };
 
-  // Save Preferences to API and client cache
-  const handleSavePreferences = async (updates?: Partial<UserPreferences>) => {
-    const payload = updates ? { ...preferences, ...updates } : preferences;
-    saveClientPreferences(payload);
-    if (updates) {
-      setPreferences((p) => ({ ...p, ...updates }));
+  // Unified Preference Queue with Debounced Auto-Save and Instant UI Response
+  const queuePreferenceUpdate = (
+    updates: Partial<UserPreferences>,
+    immediate = false
+  ) => {
+    lastLocalMutationRef.current = Date.now();
+    pendingUpdatesRef.current = { ...pendingUpdatesRef.current, ...updates };
+
+    // 1. Immediately apply to React state
+    setPreferences((prev) => {
+      const next = { ...prev, ...updates, updatedAt: Date.now() };
+      saveClientPreferences(next, username);
+      return next;
+    });
+
+    // 2. Immediately apply to CSS variables & DOM attributes
+    if (updates.theme) {
+      document.documentElement.setAttribute('data-theme', updates.theme);
     }
+    if (updates.hologramOpacity !== undefined) {
+      document.documentElement.style.setProperty(
+        '--hologram-opacity',
+        (updates.hologramOpacity / 100).toString()
+      );
+    }
+    if (updates.hologramAmount !== undefined) {
+      document.documentElement.style.setProperty(
+        '--hologram-amount',
+        (updates.hologramAmount / 100).toString()
+      );
+    }
+    if (updates.wallpaperBrightness !== undefined) {
+      document.documentElement.style.setProperty(
+        '--wallpaper-brightness',
+        updates.wallpaperBrightness.toString()
+      );
+    }
+
+    // 3. Clear existing debounce timer
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
+    }
+
+    if (immediate) {
+      flushSavePreferences();
+    } else {
+      setSaveStatus('saving');
+      saveDebounceTimerRef.current = setTimeout(() => {
+        flushSavePreferences();
+      }, 450);
+    }
+  };
+
+  const flushSavePreferences = async () => {
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
+    }
+
+    const payload = { ...pendingUpdatesRef.current };
+    if (Object.keys(payload).length === 0) {
+      Object.assign(payload, preferences);
+    }
+    pendingUpdatesRef.current = {};
+
+    setSaveStatus('saving');
     try {
-      await fetch('/api/preferences', {
+      const res = await fetch('/api/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-    } catch (e) {
-      console.warn('Failed to save preferences to server, active in local browser cache:', e);
+
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.preferences) {
+        if (Date.now() - lastLocalMutationRef.current < 2000) {
+          setPreferences((prev) => ({
+            ...prev,
+            version: data.preferences.version,
+            updatedAt: data.preferences.updatedAt,
+          }));
+        }
+      }
+
+      setSaveStatus('saved');
+      setSaveErrorMessage(null);
+      setTimeout(() => setSaveStatus('idle'), 2500);
+    } catch (e: any) {
+      console.warn('Failed to sync preferences to cloud, preserved in local browser session:', e);
+      // DO NOT reset preferences to default!
+      setSaveStatus('error');
+      setSaveErrorMessage('Cloud sync failed. Preferences preserved locally.');
+      setTimeout(() => setSaveStatus('idle'), 5000);
     }
   };
 
@@ -583,6 +757,7 @@ export default function Desktop({ username, onLogout }: Props) {
           wallpaperType={preferences.wallpaperType}
           customWallpaperUrl={preferences.customWallpaperUrl}
           brightness={preferences.wallpaperBrightness}
+          isLoading={wallpaperStatus === 'loading'}
         />
       </div>
 
@@ -596,12 +771,14 @@ export default function Desktop({ username, onLogout }: Props) {
         />
       </div>
 
-      {/* 3. Telemetry HUD Top Header with CRAZY Button */}
+      {/* 3. Telemetry HUD Top Header with CRAZY & HACKER Buttons */}
       <TelemetryHeader
         username={username}
         storageStats={storageStats}
         isCrazyMode={isCrazyMode}
         onToggleCrazy={handleToggleCrazy}
+        isHackerMode={isHackerMode}
+        onToggleHacker={handleToggleHacker}
         onOpenSettings={() =>
           openWindow('personalization', 'System Personalization & Themes', null, {
             width: 700,
@@ -663,6 +840,11 @@ export default function Desktop({ username, onLogout }: Props) {
         <SpiderWebRecallOverlay windows={windows} />
       )}
 
+      {/* Full-Screen Cinematic Hacker Mode & Persistent Cyber Breach Simulation Overlay */}
+      {isHackerMode && hackerPhase && (
+        <HackerModeOverlay phase={hackerPhase} onExit={handleExitHacker} />
+      )}
+
       {/* 5. Floating Holographic Windows */}
       {windows.map((win, idx) => (
         <Window
@@ -698,8 +880,7 @@ export default function Desktop({ username, onLogout }: Props) {
                   wallpaperType: type,
                   customWallpaperUrl: url || '',
                 };
-                setPreferences((p) => ({ ...p, ...updates }));
-                handleSavePreferences(updates);
+                queuePreferenceUpdate(updates, true);
               }}
               onOpenHologramControls={() => {
                 openWindow(
@@ -717,20 +898,19 @@ export default function Desktop({ username, onLogout }: Props) {
               opacity={preferences.hologramOpacity}
               amount={preferences.hologramAmount}
               onChangeOpacity={(val) => {
-                setPreferences((p) => ({ ...p, hologramOpacity: val }));
+                queuePreferenceUpdate({ hologramOpacity: val });
               }}
               onChangeAmount={(val) => {
-                setPreferences((p) => ({ ...p, hologramAmount: val }));
+                queuePreferenceUpdate({ hologramAmount: val });
               }}
               onResetDefaults={() => {
                 const resetUpdates = {
                   hologramOpacity: DEFAULT_PREFS.hologramOpacity,
                   hologramAmount: DEFAULT_PREFS.hologramAmount,
                 };
-                setPreferences((p) => ({ ...p, ...resetUpdates }));
-                handleSavePreferences(resetUpdates);
+                queuePreferenceUpdate(resetUpdates, true);
               }}
-              onSavePreferences={() => handleSavePreferences()}
+              onSavePreferences={() => flushSavePreferences()}
             />
           )}
 
@@ -738,9 +918,12 @@ export default function Desktop({ username, onLogout }: Props) {
             <PersonalizationWindow
               preferences={preferences}
               onUpdatePreferences={(updates) => {
-                setPreferences((p) => ({ ...p, ...updates }));
+                const isImmediate = 'theme' in updates;
+                queuePreferenceUpdate(updates, isImmediate);
               }}
-              onSave={() => handleSavePreferences()}
+              onSave={() => flushSavePreferences()}
+              saveStatus={saveStatus}
+              saveErrorMessage={saveErrorMessage}
               onOpenWallpapers={() => {
                 openWindow('wallpapers', 'Live Wallpaper Archive', null, {
                   width: 880,
@@ -785,6 +968,35 @@ export default function Desktop({ username, onLogout }: Props) {
           )}
         </Window>
       ))}
+
+      {/* 5b. Non-intrusive HUD error toast for cloud synchronization */}
+      {saveStatus === 'error' && saveErrorMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '72px',
+            right: '24px',
+            zIndex: 99999,
+            background: 'rgba(239, 68, 68, 0.22)',
+            border: '1px solid #ef4444',
+            boxShadow: '0 0 20px rgba(239, 68, 68, 0.45)',
+            backdropFilter: 'blur(10px)',
+            color: '#fff',
+            padding: '10px 18px',
+            borderRadius: '6px',
+            fontFamily: 'var(--font-hud)',
+            fontSize: '0.82rem',
+            letterSpacing: '0.08em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ color: '#ef4444', fontWeight: 800 }}>[HUD ALERT]</span>
+          <span>{saveErrorMessage}</span>
+        </div>
+      )}
 
       {/* 6. Floating Holographic Taskbar / Dock */}
       <Taskbar

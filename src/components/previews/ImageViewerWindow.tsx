@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
-import { getClientWallpaperBlob, getClientOfflineFileBlob } from '@/lib/client-storage';
 
 interface Props {
   file: CloudFile;
@@ -21,40 +20,10 @@ export default function ImageViewerWindow({ file }: Props) {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [imgSrc, setImgSrc] = useState<string>('');
-  const [localBlob, setLocalBlob] = useState<Blob | null>(null);
 
   React.useEffect(() => {
-    let objectUrl: string | null = null;
-    let isCancelled = false;
-
-    async function loadSrc() {
-      // 1. Try local IndexedDB cache first
-      try {
-        let blob = await getClientOfflineFileBlob(file.id, file.name);
-        if (!blob) {
-          blob = await getClientWallpaperBlob(file.id, file.name, file.size);
-        }
-        if (blob && !isCancelled) {
-          setLocalBlob(blob);
-          objectUrl = URL.createObjectURL(blob);
-          setImgSrc(objectUrl);
-          return;
-        }
-      } catch {}
-
-      // 2. Canonical server URL
-      if (!isCancelled) {
-        setImgSrc(`/api/files/download/${encodeURIComponent(file.id)}?preview=true`);
-      }
-    }
-
-    loadSrc();
-
-    return () => {
-      isCancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [file.id, file.storageKey, file.name, file.size]);
+    setImgSrc(`/api/files/download/${encodeURIComponent(file.id)}?preview=true`);
+  }, [file.id]);
 
   const handleZoomIn = () => setScale((s) => Math.min(3, s + 0.25));
   const handleZoomOut = () => setScale((s) => Math.max(0.5, s - 0.25));
@@ -65,23 +34,12 @@ export default function ImageViewerWindow({ file }: Props) {
   };
 
   const handleDownload = () => {
-    if (localBlob) {
-      const url = URL.createObjectURL(localBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    } else {
-      const link = document.createElement('a');
-      link.href = `/api/files/download/${encodeURIComponent(file.id)}`;
-      link.download = file.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    const link = document.createElement('a');
+    link.href = `/api/files/download/${encodeURIComponent(file.id)}`;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (

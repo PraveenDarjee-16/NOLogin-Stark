@@ -5,6 +5,7 @@ import '@/styles/hologram.css';
 import '@/styles/windows.css';
 import '@/styles/explorer.css';
 import '@/styles/hacker.css';
+import '@/styles/praveen-experience.css';
 
 export const metadata: Metadata = {
   title: 'Stark Cloud Desktop // Futuristic 3D File Explorer',

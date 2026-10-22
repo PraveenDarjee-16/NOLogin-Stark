@@ -4,8 +4,6 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, Music, Download } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
-import { getClientOfflineFileBlob, getClientWallpaperBlob } from '@/lib/client-storage';
-
 interface Props {
   file: CloudFile;
 }
@@ -17,39 +15,7 @@ export default function AudioPlayerWindow({ file }: Props) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
-  const [audioSrc, setAudioSrc] = useState<string>('');
-  const [localBlob, setLocalBlob] = useState<Blob | null>(null);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let isCancelled = false;
-
-    async function loadSrc() {
-      try {
-        let blob = await getClientOfflineFileBlob(file.id, file.name);
-        if (!blob) {
-          blob = await getClientWallpaperBlob(file.id, file.name);
-        }
-        if (blob && !isCancelled) {
-          setLocalBlob(blob);
-          objectUrl = URL.createObjectURL(blob);
-          setAudioSrc(objectUrl);
-          return;
-        }
-      } catch {}
-
-      if (!isCancelled) {
-        setAudioSrc(`/api/files/download/${encodeURIComponent(file.id)}?preview=true`);
-      }
-    }
-
-    loadSrc();
-
-    return () => {
-      isCancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [file.id, file.storageKey, file.name]);
+  const audioSrc = `/api/files/download/${encodeURIComponent(file.id)}?preview=true`;
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -216,23 +182,12 @@ export default function AudioPlayerWindow({ file }: Props) {
               className="window-control-btn"
               title="Download Audio"
               onClick={() => {
-                if (localBlob) {
-                  const url = URL.createObjectURL(localBlob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = file.name;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  setTimeout(() => URL.revokeObjectURL(url), 2000);
-                } else {
-                  const link = document.createElement('a');
-                  link.href = `/api/files/download/${encodeURIComponent(file.id)}`;
-                  link.download = file.name;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }
+                const link = document.createElement('a');
+                link.href = `/api/files/download/${encodeURIComponent(file.id)}`;
+                link.download = file.name;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
               }}
             >
               <Download size={15} />

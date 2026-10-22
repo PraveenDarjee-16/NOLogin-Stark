@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get('search');
   const trashOnly = searchParams.get('trash') === 'true';
 
-  let notes = await db.getNotes();
+  let notes = await db.getNotes(session.username);
 
   if (trashOnly) {
     notes = notes.filter((n) => n.isTrash);
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
       id: generateId('note'),
       title,
       content,
+      userId: session.username,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isTrash: false,

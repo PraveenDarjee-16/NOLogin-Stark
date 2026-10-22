@@ -20,13 +20,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { LiveWallpaperType, CloudFile } from '@/lib/types';
-import { formatBytes, formatDate } from '@/lib/utils';
-import {
-  saveClientWallpaper,
-  saveClientOfflineFile,
-  getClientOfflineFiles,
-  getClientWallpaperBlob,
-} from '@/lib/client-storage';
+import { formatBytes, formatDate, broadcastFilesUpdated, subscribeToFilesUpdated } from '@/lib/utils';
 
 interface Props {
   currentWallpaperType: LiveWallpaperType;
@@ -125,7 +119,7 @@ export default function WallpaperGalleryWindow({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load user files from the website's cloud storage and browser IndexedDB
+  // Load user files from the website's cloud storage
   const loadCloudMedia = async () => {
     setIsLoadingCloud(true);
     try {
@@ -138,15 +132,8 @@ export default function WallpaperGalleryWindow({
         }
       } catch {}
 
-      // Retrieve local offline files from browser IndexedDB
-      let offlineFiles: CloudFile[] = [];
-      try {
-        offlineFiles = await getClientOfflineFiles();
-      } catch {}
-
-      const combined = [...serverFiles, ...offlineFiles];
       const seen = new Set<string>();
-      const media = combined.filter((f) => {
+      const media = serverFiles.filter((f) => {
         if (f.isTrash) return false;
         const isVid = f.category === 'videos' || f.mimeType?.startsWith('video/');
         const isImg = f.category === 'photos' || f.mimeType?.startsWith('image/');
@@ -167,6 +154,12 @@ export default function WallpaperGalleryWindow({
 
   useEffect(() => {
     loadCloudMedia();
+    const unsubscribe = subscribeToFilesUpdated(() => {
+      loadCloudMedia();
+    });
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const handleApply = (type: LiveWallpaperType, url?: string) => {
@@ -185,12 +178,6 @@ export default function WallpaperGalleryWindow({
       file.name.toLowerCase().endsWith('.webm');
 
     try {
-      // 1. Immediately store in browser IndexedDB for instant local preview
-      const localResult = await saveClientWallpaper(file);
-      handleApply(isVid ? 'custom-video' : 'custom-image', `indexeddb://${localResult.id}`);
-      setActiveCustomInfo({ name: file.name, size: file.size });
-
-      // 2. Upload file to backend so all other devices can stream and display this wallpaper
       let uploadedToCloud = false;
 
       // Try presigned cloud upload first if configured
@@ -229,6 +216,7 @@ export default function WallpaperGalleryWindow({
               if (regData.file?.id) {
                 const permanentUrl = `/api/files/download/${regData.file.id}?preview=true`;
                 handleApply(isVid ? 'custom-video' : 'custom-image', permanentUrl);
+                setActiveCustomInfo({ name: file.name, size: file.size });
                 uploadedToCloud = true;
               }
             }
@@ -248,14 +236,21 @@ export default function WallpaperGalleryWindow({
           if (data.file?.id) {
             const permanentUrl = `/api/files/download/${data.file.id}?preview=true`;
             handleApply(isVid ? 'custom-video' : 'custom-image', permanentUrl);
+            setActiveCustomInfo({ name: file.name, size: file.size });
             uploadedToCloud = true;
           }
         }
       }
 
-      await loadCloudMedia();
+      if (uploadedToCloud) {
+        broadcastFilesUpdated();
+        await loadCloudMedia();
+      } else {
+        alert('Upload failed: Unable to save wallpaper to persistent storage.');
+      }
     } catch (err) {
       console.error('Wallpaper processing failed:', err);
+      alert('Wallpaper processing failed.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -725,16 +720,7 @@ export default function WallpaperGalleryWindow({
                     >
                       {isVid ? (
                         <video
-                          src={file.id.startsWith('local_file_') ? undefined : fileUrl}
-                          ref={(el) => {
-                            if (el && file.id.startsWith('local_file_') && !el.src) {
-                              getClientWallpaperBlob(file.id).then((blob) => {
-                                if (blob && el) {
-                                  el.src = URL.createObjectURL(blob);
-                                }
-                              });
-                            }
-                          }}
+                          src={fileUrl}
                           muted
                           playsInline
                           style={{
@@ -756,16 +742,7 @@ export default function WallpaperGalleryWindow({
                         />
                       ) : (
                         <img
-                          src={file.id.startsWith('local_file_') ? undefined : fileUrl}
-                          ref={(el) => {
-                            if (el && file.id.startsWith('local_file_') && !el.src) {
-                              getClientWallpaperBlob(file.id).then((blob) => {
-                                if (blob && el) {
-                                  el.src = URL.createObjectURL(blob);
-                                }
-                              });
-                            }
-                          }}
+                          src={fileUrl}
                           alt={file.name}
                           style={{
                             width: '100%',
@@ -856,11 +833,7 @@ export default function WallpaperGalleryWindow({
                       className={`holo-btn ${isCurrent ? 'primary' : ''}`}
                       style={{ width: '100%', fontSize: '0.78rem' }}
                       onClick={() => {
-                        // Always use persistent authenticated cloud URL so the wallpaper syncs across all devices
-                        const targetUrl = file.id.startsWith('local_file_') && !file.storageKey
-                          ? `indexeddb://${file.id}`
-                          : fileUrl;
-                        handleApply(isVid ? 'custom-video' : 'custom-image', targetUrl);
+                        handleApply(isVid ? 'custom-video' : 'custom-image', fileUrl);
                       }}
                     >
                       {isCurrent ? <Check size={13} /> : <Sparkles size={13} />}

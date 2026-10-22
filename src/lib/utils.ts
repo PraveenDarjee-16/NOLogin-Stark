@@ -106,3 +106,60 @@ export function getMimeTypeFromFilename(filename: string): string {
 export function generateId(prefix = 'item'): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
+
+export function broadcastFilesUpdated(details?: { filename?: string; action?: string }) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (window.BroadcastChannel) {
+      const channel = new BroadcastChannel('stark_cloud_desktop');
+      channel.postMessage({ type: 'FILES_UPDATED', timestamp: Date.now(), ...details });
+      channel.close();
+    }
+  } catch {}
+  try {
+    localStorage.setItem('stark_files_updated', String(Date.now()));
+  } catch {}
+}
+
+export function subscribeToFilesUpdated(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  let channel: BroadcastChannel | null = null;
+  try {
+    if (window.BroadcastChannel) {
+      channel = new BroadcastChannel('stark_cloud_desktop');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'FILES_UPDATED') {
+          callback();
+        }
+      };
+    }
+  } catch {}
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === 'stark_files_updated') {
+      callback();
+    }
+  };
+
+  const handleVisibility = () => {
+    if (document.visibilityState === 'visible') {
+      callback();
+    }
+  };
+
+  window.addEventListener('storage', handleStorage);
+  window.addEventListener('focus', handleVisibility);
+  document.addEventListener('visibilitychange', handleVisibility);
+
+  return () => {
+    if (channel) {
+      try {
+        channel.close();
+      } catch {}
+    }
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener('focus', handleVisibility);
+    document.removeEventListener('visibilitychange', handleVisibility);
+  };
+}

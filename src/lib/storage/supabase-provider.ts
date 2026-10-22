@@ -98,13 +98,14 @@ export class SupabaseStorageProvider {
   }
 
   async getSignedUploadUrl(
-    storageKey: string
+    storageKey: string,
+    mimeType?: string
   ): Promise<{ signedUrl: string; token: string; path: string } | null> {
     if (!this.client) return null;
     try {
       const { data, error } = await this.client.storage
         .from(this.bucketName)
-        .createSignedUploadUrl(storageKey);
+        .createSignedUploadUrl(storageKey, { upsert: true } as any);
 
       if (error || !data) return null;
       return data;

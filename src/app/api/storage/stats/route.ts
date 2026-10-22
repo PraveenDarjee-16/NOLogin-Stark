@@ -10,9 +10,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const files = await db.getFiles();
-  const folders = await db.getFolders();
-  const preferences = await db.getPreferences();
+  const files = await db.getFiles(session.username);
+  const folders = await db.getFolders(session.username);
+  const preferences = await db.getPreferences(session.username);
   const { type: storageProviderType } = getStorageProvider();
 
   const capacityGB =

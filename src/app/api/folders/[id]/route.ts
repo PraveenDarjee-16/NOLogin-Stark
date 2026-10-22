@@ -43,6 +43,10 @@ export async function PATCH(
     );
   }
 
+  if (folder.userId && folder.userId.toLowerCase() !== session.username.toLowerCase()) {
+    return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
+  }
+
   const body = await req.json();
   const updates: any = {};
 
@@ -89,8 +93,12 @@ export async function DELETE(
     );
   }
 
+  if (folder.userId && folder.userId.toLowerCase() !== session.username.toLowerCase()) {
+    return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
+  }
+
   // Delete all files inside this folder recursively
-  const allFiles = await db.getFiles();
+  const allFiles = await db.getFiles(session.username);
   const filesToDelete = allFiles.filter((f) => f.folderId === id);
   const { provider } = getStorageProvider();
 

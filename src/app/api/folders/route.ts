@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const trashOnly = searchParams.get('trash') === 'true';
 
-  let folders = await db.getFolders();
+  let folders = await db.getFolders(session.username);
   if (trashOnly) {
     folders = folders.filter((f) => f.isTrash);
   } else {
@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       name: name.trim(),
       parentId: parentId === 'root' ? null : parentId || null,
       isSystem: false,
+      userId: session.username,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isTrash: false,

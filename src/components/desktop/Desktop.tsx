@@ -27,11 +27,12 @@ import AudioPlayerWindow from '../previews/AudioPlayerWindow';
 import DocumentViewerWindow from '../previews/DocumentViewerWindow';
 import SpiderWebRecallOverlay from './SpiderWebRecallOverlay';
 import HackerModeOverlay from './HackerModeOverlay';
+import PraveenExperienceOverlay from './PraveenExperienceOverlay';
 import {
   saveClientPreferences,
   getClientPreferences,
-  getClientOfflineFiles,
 } from '@/lib/client-storage';
+import { subscribeToFilesUpdated } from '@/lib/utils';
 
 interface Props {
   username: string;
@@ -157,6 +158,23 @@ export default function Desktop({ username, onLogout }: Props) {
     setHackerPhase(null);
   };
 
+  // PRAVEEN 3D Identity Experience Mode State
+  const [isPraveenMode, setIsPraveenMode] = useState(false);
+  const [praveenOrigin, setPraveenOrigin] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleTogglePraveen = (origin: { x: number; y: number }) => {
+    if (isPraveenMode) {
+      handleExitPraveen();
+    } else {
+      setPraveenOrigin(origin);
+      setIsPraveenMode(true);
+    }
+  };
+
+  const handleExitPraveen = () => {
+    setIsPraveenMode(false);
+  };
+
   // Hidden upload input for desktop taskbar quick upload
   const desktopUploadRef = useRef<HTMLInputElement | null>(null);
 
@@ -259,24 +277,10 @@ export default function Desktop({ username, onLogout }: Props) {
         }
       } catch {}
 
-      // Retrieve local offline files from IndexedDB
-      let offlineFiles: CloudFile[] = [];
-      try {
-        offlineFiles = await getClientOfflineFiles();
-      } catch {}
-
-      // Merge and deduplicate all files to compute accurate storage usage
-      const combined = [...serverFiles, ...offlineFiles];
-      const seen = new Set<string>();
-      const allFiles = combined.filter((f) => {
-        const key = f.name.toLowerCase().trim() + '_' + f.size;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      const allFiles = serverFiles;
 
       // Guard against transient 0-byte cold start drop if we previously had cached stats
-      if (allFiles.length === 0 && serverFiles.length === 0 && offlineFiles.length === 0) {
+      if (allFiles.length === 0 && serverFiles.length === 0) {
         try {
           const raw = localStorage.getItem('stark_cached_storage_stats');
           if (raw) {
@@ -345,6 +349,15 @@ export default function Desktop({ username, onLogout }: Props) {
     fetchPreferences();
     fetchFolders();
     fetchStorageStats();
+
+    const unsubscribe = subscribeToFilesUpdated(() => {
+      fetchStorageStats();
+      fetchFolders();
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Real-time synchronization across devices (wallpapers, themes, and calibration)
@@ -771,7 +784,7 @@ export default function Desktop({ username, onLogout }: Props) {
         />
       </div>
 
-      {/* 3. Telemetry HUD Top Header with CRAZY & HACKER Buttons */}
+      {/* 3. Telemetry HUD Top Header with PRAVEEN, CRAZY & HACKER Buttons */}
       <TelemetryHeader
         username={username}
         storageStats={storageStats}
@@ -779,6 +792,8 @@ export default function Desktop({ username, onLogout }: Props) {
         onToggleCrazy={handleToggleCrazy}
         isHackerMode={isHackerMode}
         onToggleHacker={handleToggleHacker}
+        isPraveenMode={isPraveenMode}
+        onTogglePraveen={handleTogglePraveen}
         onOpenSettings={() =>
           openWindow('personalization', 'System Personalization & Themes', null, {
             width: 700,
@@ -843,6 +858,14 @@ export default function Desktop({ username, onLogout }: Props) {
       {/* Full-Screen Cinematic Hacker Mode & Persistent Cyber Breach Simulation Overlay */}
       {isHackerMode && hackerPhase && (
         <HackerModeOverlay phase={hackerPhase} onExit={handleExitHacker} />
+      )}
+
+      {/* Full-Screen PRAVEEN 3D Identity Experience Overlay */}
+      {isPraveenMode && (
+        <PraveenExperienceOverlay
+          origin={praveenOrigin}
+          onExit={handleExitPraveen}
+        />
       )}
 
       {/* 5. Floating Holographic Windows */}

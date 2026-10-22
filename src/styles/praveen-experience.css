@@ -1,0 +1,559 @@
+/* ==========================================================================
+   STARK CLOUD DESKTOP — PRAVEEN 3D IDENTITY EXPERIENCE
+   Futuristic 3D typography, holographic orbital motion & biometric reveal
+   ========================================================================== */
+
+/* 1. PRAVEEN Header Button */
+.praveen-btn {
+  font-family: var(--font-hud);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 4px 11px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(4, 12, 32, 0.95), rgba(18, 10, 42, 0.95));
+  border: 1px solid rgba(0, 240, 255, 0.65);
+  color: #e0f2fe;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.28), 0 0 4px rgba(168, 85, 247, 0.2), inset 0 0 8px rgba(0, 240, 255, 0.12);
+}
+
+.praveen-btn::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -120%;
+  width: 70%;
+  height: 200%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 240, 255, 0.25),
+    rgba(168, 85, 247, 0.35),
+    transparent
+  );
+  transform: rotate(25deg);
+  animation: praveenBtnSweep 3.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes praveenBtnSweep {
+  0% { left: -120%; }
+  30%, 100% { left: 180%; }
+}
+
+.praveen-btn:hover {
+  background: linear-gradient(135deg, rgba(8, 24, 58, 0.98), rgba(34, 16, 72, 0.98));
+  border-color: #00f0ff;
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.8), 0 0 26px rgba(168, 85, 247, 0.6), inset 0 0 12px rgba(0, 240, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.praveen-btn.active {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.92), rgba(168, 85, 247, 0.92));
+  color: #030712;
+  font-weight: 800;
+  border-color: #ffffff;
+  box-shadow: 0 0 24px #00f0ff, 0 0 35px #a855f7;
+  animation: praveenBtnPulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes praveenBtnPulse {
+  0% {
+    transform: scale(1);
+    filter: brightness(1.1) drop-shadow(0 0 10px #00f0ff);
+  }
+  100% {
+    transform: scale(1.06);
+    filter: brightness(1.7) drop-shadow(0 0 22px #a855f7);
+  }
+}
+
+.praveen-btn-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #00f0ff;
+  box-shadow: 0 0 8px #00f0ff;
+  animation: praveenDotBlink 1s infinite alternate;
+}
+
+@keyframes praveenDotBlink {
+  0% { opacity: 0.4; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1.3); }
+}
+
+/* 2. Fullscreen Experience Overlay */
+.praveen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  background: radial-gradient(circle at center, rgba(3, 8, 28, 0.88) 0%, rgba(1, 3, 10, 0.96) 80%, #000002 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justifyContent: center;
+  user-select: none;
+  perspective: 1400px;
+  perspective-origin: 50% 50%;
+  animation: praveenFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes praveenFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.praveen-overlay.exiting {
+  animation: praveenFadeOut 0.5s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes praveenFadeOut {
+  from { opacity: 1; transform: scale(1); filter: blur(0px); }
+  to { opacity: 0; transform: scale(1.08); filter: blur(16px); }
+}
+
+/* 3. Background Kinetic Canvas */
+.praveen-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* 4. 3D Perspective Scene Stage */
+.praveen-scene-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  transform-style: preserve-3d;
+  display: flex;
+  align-items: center;
+  justifyContent: center;
+  pointer-events: none;
+}
+
+/* 5. 3D Extruded Letters */
+.praveen-3d-letter {
+  position: absolute;
+  transform-style: preserve-3d;
+  font-family: var(--font-hud);
+  font-weight: 900;
+  text-transform: uppercase;
+  will-change: transform, opacity;
+  pointer-events: none;
+  cursor: default;
+}
+
+/* Layered 3D Extrusion Stack */
+.letter-3d-wrapper {
+  position: relative;
+  display: inline-block;
+  transform-style: preserve-3d;
+  width: 72px;
+  height: 90px;
+  text-align: center;
+  line-height: 90px;
+  font-size: 4.8rem;
+}
+
+.letter-slice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backface-visibility: visible;
+  pointer-events: none;
+}
+
+/* --- MATERIAL 1: P — Titanium Hologram --- */
+.mat-titanium .letter-front {
+  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 30%, #94a3b8 70%, #475569 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.95)) drop-shadow(0 0 35px rgba(0, 240, 255, 0.4));
+  text-shadow: 0 0 3px #00f0ff;
+}
+.mat-titanium .letter-slice-depth {
+  color: #334155;
+  text-shadow: -1px -1px 0 #00f0ff, 1px 1px 0 #0f172a;
+}
+.mat-titanium .letter-back {
+  color: #0f172a;
+  text-shadow: 0 0 20px #00f0ff;
+}
+
+/* --- MATERIAL 2: R — Crimson Energy Alloy --- */
+.mat-crimson .letter-front {
+  background: linear-gradient(135deg, #fecaca 0%, #ef4444 40%, #b91c1c 75%, #450a0a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 18px rgba(239, 68, 68, 0.95)) drop-shadow(0 0 35px rgba(239, 68, 68, 0.5));
+  text-shadow: 0 0 4px #ef4444;
+}
+.mat-crimson .letter-slice-depth {
+  color: #7f1d1d;
+  text-shadow: -1px -1px 0 #ef4444, 1px 1px 0 #200505;
+}
+.mat-crimson .letter-back {
+  color: #180303;
+  text-shadow: 0 0 20px #ef4444;
+}
+
+/* --- MATERIAL 3: A — Crystal Prism --- */
+.mat-crystal .letter-front {
+  background: linear-gradient(135deg, #ffffff 0%, #bae6fd 30%, #38bdf8 70%, #0284c7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 40px rgba(255, 255, 255, 0.6));
+  text-shadow: 0 0 5px #e0f2fe;
+}
+.mat-crystal .letter-slice-depth {
+  color: #0369a1;
+  text-shadow: -1px -1px 0 #bae6fd, 1px 1px 0 #0c4a6e;
+}
+.mat-crystal .letter-back {
+  color: #082f49;
+  text-shadow: 0 0 25px #38bdf8;
+}
+
+/* --- MATERIAL 4: V — Obsidian Chrome --- */
+.mat-obsidian .letter-front {
+  background: linear-gradient(135deg, #f5d0fe 0%, #c084fc 35%, #581c87 75%, #0f172a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.95)) drop-shadow(0 0 40px rgba(236, 72, 153, 0.45));
+  text-shadow: 0 0 4px #c084fc;
+}
+.mat-obsidian .letter-slice-depth {
+  color: #2e1065;
+  text-shadow: -1px -1px 0 #a855f7, 1px 1px 0 #020617;
+}
+.mat-obsidian .letter-back {
+  color: #050210;
+  text-shadow: 0 0 25px #a855f7;
+}
+
+/* --- MATERIAL 5: E1 — Neon Glass --- */
+.mat-neon .letter-front {
+  background: linear-gradient(135deg, #e0ffff 0%, #00f0ff 45%, #0891b2 85%, #155e75 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 25px rgba(0, 240, 255, 1)) drop-shadow(0 0 50px rgba(0, 240, 255, 0.6));
+  text-shadow: 0 0 6px #00f0ff;
+}
+.mat-neon .letter-slice-depth {
+  color: #0e7490;
+  text-shadow: -1px -1px 0 #00f0ff, 1px 1px 0 #083344;
+}
+.mat-neon .letter-back {
+  color: #041f2a;
+  text-shadow: 0 0 30px #00f0ff;
+}
+
+/* --- MATERIAL 6: E2 — Golden Plasma Metal --- */
+.mat-gold .letter-front {
+  background: linear-gradient(135deg, #fffbeb 0%, #fbbf24 35%, #d97706 75%, #78350f 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 20px rgba(245, 158, 11, 0.95)) drop-shadow(0 0 40px rgba(251, 191, 36, 0.5));
+  text-shadow: 0 0 4px #fbbf24;
+}
+.mat-gold .letter-slice-depth {
+  color: #92400e;
+  text-shadow: -1px -1px 0 #fbbf24, 1px 1px 0 #281203;
+}
+.mat-gold .letter-back {
+  color: #1a0b02;
+  text-shadow: 0 0 25px #f59e0b;
+}
+
+/* --- MATERIAL 7: N — Quantum Alloy --- */
+.mat-quantum .letter-front {
+  background: linear-gradient(135deg, #00f0ff 0%, #38bdf8 30%, #ec4899 70%, #be185d 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(-3px 0 16px rgba(0, 240, 255, 0.9)) drop-shadow(3px 0 16px rgba(236, 72, 153, 0.9));
+  text-shadow: 0 0 4px #00f0ff;
+}
+.mat-quantum .letter-slice-depth {
+  color: #4c0519;
+  text-shadow: -1px -1px 0 #00f0ff, 1px 1px 0 #ec4899;
+}
+.mat-quantum .letter-back {
+  color: #0b0f19;
+  text-shadow: 0 0 25px #ec4899;
+}
+
+/* 6. Central Identity Holographic Medallion */
+.praveen-portrait-anchor {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justifyContent: center;
+  pointer-events: none;
+}
+
+.portrait-medallion-container {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justifyContent: center;
+  transform-style: preserve-3d;
+}
+
+/* Concentric Rotating HUD Reticles */
+.hud-reticle-outer {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  border: 1px dashed rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.25);
+  animation: hudRotateClockwise 28s linear infinite;
+  pointer-events: none;
+}
+
+.hud-reticle-mid {
+  position: absolute;
+  width: 298px;
+  height: 298px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top: 2px solid #00f0ff;
+  border-bottom: 2px solid #a855f7;
+  animation: hudRotateCounter 16s linear infinite;
+  pointer-events: none;
+}
+
+.hud-reticle-inner {
+  position: absolute;
+  width: 282px;
+  height: 282px;
+  border-radius: 50%;
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  border-left: 2px solid #f59e0b;
+  border-right: 2px solid #00f0ff;
+  animation: hudRotateClockwise 20s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes hudRotateClockwise {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes hudRotateCounter {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+/* Glowing Hexagonal / Circular Portrait Shield */
+.portrait-shield {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at center, rgba(12, 28, 64, 0.95), rgba(3, 7, 20, 0.98));
+  border: 2px solid rgba(0, 240, 255, 0.85);
+  box-shadow: 0 0 35px rgba(0, 240, 255, 0.6), 0 0 60px rgba(168, 85, 247, 0.35), inset 0 0 25px rgba(0, 240, 255, 0.4);
+  transform: translateZ(20px);
+}
+
+.portrait-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 15%;
+  filter: contrast(1.08) brightness(1.05);
+  transition: opacity 1.2s ease-in, filter 1.2s ease-in;
+}
+
+/* Holographic Laser Sweep */
+.portrait-laser-sweep {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 240, 255, 0.8) 25%,
+    #ffffff 50%,
+    rgba(245, 158, 11, 0.8) 75%,
+    transparent 100%
+  );
+  box-shadow: 0 0 14px #00f0ff, 0 0 25px #ffffff;
+  animation: laserSweepVertical 3.2s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes laserSweepVertical {
+  0% { top: 0%; opacity: 0.9; }
+  50% { opacity: 1; }
+  100% { top: 96%; opacity: 0.9; }
+}
+
+/* Telemetry Badge Underneath Portrait */
+.portrait-telemetry-badge {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-hud);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.8);
+  background: rgba(3, 8, 24, 0.85);
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.2);
+}
+
+.portrait-telemetry-sub {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+}
+
+/* 7. Exit HUD Banner (Bottom Center) */
+.praveen-exit-hud {
+  position: absolute;
+  bottom: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(3, 8, 24, 0.88);
+  border: 1px solid rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+  padding: 8px 20px;
+  border-radius: 30px;
+  font-family: var(--font-hud);
+  font-size: 0.75rem;
+  color: #e0f2fe;
+  letter-spacing: 0.1em;
+  pointer-events: auto;
+}
+
+.praveen-exit-btn {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444;
+  color: #ffffff;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-hud);
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.praveen-exit-btn:hover {
+  background: #ef4444;
+  box-shadow: 0 0 14px #ef4444;
+  transform: scale(1.05);
+}
+
+/* 8. Top HUD Telemetry Ribbon */
+.praveen-top-hud {
+  position: absolute;
+  top: 18px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-family: var(--font-hud);
+  font-size: 0.72rem;
+  color: rgba(0, 240, 255, 0.85);
+  letter-spacing: 0.14em;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+  pointer-events: none;
+}
+
+.praveen-top-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(2, 6, 23, 0.8);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+}
+
+/* 9. Responsive Adaptations */
+@media (max-width: 768px) {
+  .portrait-medallion-container {
+    width: 200px;
+    height: 200px;
+  }
+  .hud-reticle-outer {
+    width: 240px;
+    height: 240px;
+  }
+  .hud-reticle-mid {
+    width: 220px;
+    height: 220px;
+  }
+  .hud-reticle-inner {
+    width: 210px;
+    height: 210px;
+  }
+  .portrait-shield {
+    width: 170px;
+    height: 170px;
+  }
+  .letter-3d-wrapper {
+    width: 48px;
+    height: 60px;
+    line-height: 60px;
+    font-size: 3.2rem;
+  }
+  .praveen-top-hud {
+    font-size: 0.62rem;
+    gap: 12px;
+  }
+  .praveen-exit-hud {
+    font-size: 0.68rem;
+    padding: 6px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-reticle-outer,
+  .hud-reticle-mid,
+  .hud-reticle-inner,
+  .portrait-laser-sweep,
+  .praveen-btn::before {
+    animation: none !important;
+  }
+}

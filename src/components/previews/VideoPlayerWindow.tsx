@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { CloudFile } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
-import { getClientWallpaperBlob, getClientOfflineFileBlob } from '@/lib/client-storage';
 
 interface Props {
   file: CloudFile;
@@ -33,46 +32,15 @@ export default function VideoPlayerWindow({ file }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [localBlob, setLocalBlob] = useState<Blob | null>(null);
 
-  // Initialize video source
+  // Initialize canonical video source directly from server
   useEffect(() => {
-    let objectUrl: string | null = null;
-    let isCancelled = false;
-
     setIsLoading(true);
     setErrorMessage(null);
 
-    async function initSrc() {
-      // 1. Check local IndexedDB cache first
-      try {
-        let blob = await getClientOfflineFileBlob(file.id, file.name);
-        if (!blob) {
-          blob = await getClientWallpaperBlob(file.id, file.name, file.size);
-        }
-        if (blob && !isCancelled) {
-          setLocalBlob(blob);
-          objectUrl = URL.createObjectURL(blob);
-          setVideoSrc(objectUrl);
-          return;
-        }
-      } catch (err) {
-        console.warn('IndexedDB blob retrieval notice:', err);
-      }
-
-      // 2. Canonical server streaming URL with HTTP 206 Partial Content range support
-      if (!isCancelled) {
-        const serverUrl = `/api/files/download/${encodeURIComponent(file.id)}?preview=true`;
-        setVideoSrc(serverUrl);
-      }
-    }
-
-    initSrc();
-
-    return () => {
-      isCancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    // Canonical server streaming URL with HTTP 206 Partial Content range support
+    const serverUrl = `/api/files/download/${encodeURIComponent(file.id)}?preview=true`;
+    setVideoSrc(serverUrl);
   }, [file.id, file.storageKey, file.name, file.size]);
 
   const togglePlay = () => {
@@ -129,12 +97,46 @@ export default function VideoPlayerWindow({ file }: Props) {
     }
   };
 
-  const handleVideoError = () => {
+  const handleVideoError = async () => {
     setIsLoading(false);
     const err = videoRef.current?.error;
+
+    // Check actual network status by probing the video URL before assuming codec issue
+    try {
+      const probeRes = await fetch(videoSrc, {
+        method: 'GET',
+        headers: { Range: 'bytes=0-1023' },
+      });
+
+      if (probeRes.status === 401) {
+        setErrorMessage(
+          'Authentication Required: Your session may have expired. Please re-login to stream this video.'
+        );
+        return;
+      }
+      if (probeRes.status === 404) {
+        setErrorMessage(
+          'File Not Found: The video file does not exist on the storage server.'
+        );
+        return;
+      }
+      if (!probeRes.ok && probeRes.status !== 206) {
+        setErrorMessage(
+          `Storage Server Error (${probeRes.status}): Failed to retrieve video stream from storage provider.`
+        );
+        return;
+      }
+    } catch (networkErr: any) {
+      setErrorMessage(
+        `Network Connection Error: Could not reach video streaming endpoint (${networkErr?.message || 'offline'}).`
+      );
+      return;
+    }
+
+    // Server responded with 200/206, meaning file exists, but browser cannot decode/play it
     if (!err) {
       setErrorMessage(
-        'Unable to load or stream video file. Please check server connection.'
+        `Playback Error: Unable to play video format or codec (${file.mimeType || 'video/mp4'}). You can download the original file below.`
       );
       return;
     }
@@ -150,7 +152,7 @@ export default function VideoPlayerWindow({ file }: Props) {
         break;
       case 3: // MEDIA_ERR_DECODE
         setErrorMessage(
-          'Decoding error: Video stream is corrupted or the codec is not supported by your browser.'
+          `Decoding Error: The video stream could not be decoded. The file may use a format or codec (${file.mimeType || 'video/mp4'}) not supported by your browser.`
         );
         break;
       case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
@@ -168,19 +170,7 @@ export default function VideoPlayerWindow({ file }: Props) {
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      if (localBlob) {
-        const url = URL.createObjectURL(localBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = file.name;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(url), 3000);
-        return;
-      }
-
-      // Download from server download route
+      // Direct server download route
       const downloadUrl = `/api/files/download/${encodeURIComponent(file.id)}`;
       const link = document.createElement('a');
       link.href = downloadUrl;

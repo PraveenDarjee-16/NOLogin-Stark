@@ -20,9 +20,13 @@ export async function GET(
     return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
   }
 
+  if (folder.userId && folder.userId.toLowerCase() !== session.username.toLowerCase()) {
+    return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
+  }
+
   try {
-    const allFolders = await db.getFolders();
-    const allFiles = await db.getFiles();
+    const allFolders = await db.getFolders(session.username);
+    const allFiles = await db.getFiles(session.username);
     const { provider } = getStorageProvider();
 
     const zip = new JSZip();

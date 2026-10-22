@@ -5,6 +5,7 @@ import os from 'os';
 import { CloudFile, CloudFolder, CloudNote, UserPreferences } from './types';
 import { getFileCategory, getMimeTypeFromFilename, generateId } from './utils';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 
 interface DatabaseSchema {
   files: CloudFile[];
@@ -127,6 +128,8 @@ class Database {
   private isSaving = false;
   private supabaseClient: SupabaseClient | null = null;
   private supabaseBucket: string = 'personal-cloud';
+  private s3Client: S3Client | null = null;
+  private s3Bucket: string = 'personal-cloud';
 
   constructor() {
     if (process.env.VERCEL) {
@@ -147,6 +150,27 @@ class Database {
         this.supabaseClient = createClient(supabaseUrl, serviceRoleKey);
       } catch (err) {
         console.warn('Supabase DB sync client initialization failed:', err);
+      }
+    }
+
+    const s3Endpoint = process.env.S3_ENDPOINT || (process.env.R2_ACCOUNT_ID ? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : undefined);
+    const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID;
+    const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY;
+    const s3Region = process.env.S3_REGION || 'auto';
+    this.s3Bucket = process.env.S3_BUCKET_NAME || process.env.R2_BUCKET_NAME || 'personal-cloud';
+
+    if (s3Endpoint && s3AccessKeyId && s3SecretAccessKey) {
+      try {
+        this.s3Client = new S3Client({
+          region: s3Region,
+          endpoint: s3Endpoint,
+          credentials: {
+            accessKeyId: s3AccessKeyId,
+            secretAccessKey: s3SecretAccessKey,
+          },
+        });
+      } catch (err) {
+        console.warn('S3 DB sync client initialization failed:', err);
       }
     }
   }
@@ -264,6 +288,42 @@ class Database {
       }
     }
 
+    // 1b. If S3/R2 Storage is configured, read from cloud bucket
+    if (!this.supabaseClient && this.s3Client) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: this.s3Bucket,
+          Key: '_system/database.json',
+        });
+        const res = await this.s3Client.send(command);
+        if (res.Body) {
+          const raw = await res.Body.transformToString();
+          const parsed: DatabaseSchema = JSON.parse(raw);
+          const folderIds = new Set(parsed.folders?.map((f: CloudFolder) => f.id) || []);
+          parsed.folders = parsed.folders || [];
+          for (const sys of SYSTEM_FOLDERS) {
+            if (!folderIds.has(sys.id)) {
+              parsed.folders.push(sys);
+            }
+          }
+          parsed.files = parsed.files || [];
+          parsed.notes = parsed.notes || [];
+          parsed.preferences = parsed.preferences || { ...DEFAULT_PREFERENCES };
+          parsed.userPreferences = parsed.userPreferences || {};
+
+          const modified = this.syncStorageDirectory(parsed);
+          this.memoryCache = parsed;
+          this.lastLoadTime = Date.now();
+          if (modified) {
+            await this.persist();
+          }
+          return parsed;
+        }
+      } catch (s3Err) {
+        console.warn('Could not read database.json from S3, checking local/seed:', s3Err);
+      }
+    }
+
     try {
       // If on Vercel and /tmp/database.json doesn't exist yet, seed from project data/database.json
       if (process.env.VERCEL && !fsSync.existsSync(this.dbPath)) {
@@ -349,6 +409,21 @@ class Database {
           console.error('Failed to sync database to Supabase cloud storage:', cloudSaveErr);
         }
       }
+
+      // Cloud S3 / R2 write (persists across all Vercel Serverless instances!)
+      if (this.s3Client) {
+        try {
+          const command = new PutObjectCommand({
+            Bucket: this.s3Bucket,
+            Key: '_system/database.json',
+            Body: Buffer.from(payloadString),
+            ContentType: 'application/json',
+          });
+          await this.s3Client.send(command);
+        } catch (s3SaveErr) {
+          console.error('Failed to sync database to S3 cloud storage:', s3SaveErr);
+        }
+      }
     } catch (err) {
       console.error('Error saving database:', err);
     } finally {
@@ -359,12 +434,15 @@ class Database {
   // --- Files ---
   async getFiles(username?: string): Promise<CloudFile[]> {
     const db = await this.load();
-    if (!username || username === 'admin') {
-      return db.files;
+    if (!username) {
+      return [];
     }
     const u = username.toLowerCase();
-    // Return files owned by user or unassigned legacy files
-    return db.files.filter((f) => !f.userId || f.userId.toLowerCase() === u);
+    // Return files owned by user. If legacy file has no userId, only admin can access it.
+    return db.files.filter((f) => {
+      const owner = f.userId ? f.userId.toLowerCase() : 'admin';
+      return owner === u;
+    });
   }
 
   async getFileById(id: string, username?: string): Promise<CloudFile | null> {
@@ -382,8 +460,12 @@ class Database {
       ) || null;
 
     if (!file) return null;
-    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
-      return null;
+    if (username) {
+      const u = username.toLowerCase();
+      const owner = file.userId ? file.userId.toLowerCase() : 'admin';
+      if (owner !== u) {
+        return null;
+      }
     }
     return file;
   }
@@ -401,21 +483,33 @@ class Database {
       ) || null;
 
     if (!file) return null;
-    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
-      return null;
+    if (username) {
+      const u = username.toLowerCase();
+      const owner = file.userId ? file.userId.toLowerCase() : 'admin';
+      if (owner !== u) {
+        return null;
+      }
     }
     return file;
   }
 
   async addFile(file: CloudFile): Promise<CloudFile> {
     const db = await this.load();
+    const u = file.userId ? file.userId.toLowerCase() : 'admin';
     // Avoid creating duplicate database entries
-    const existingIdx = db.files.findIndex(
-      (f) =>
-        f.id === file.id ||
-        (f.storageKey === file.storageKey && f.storageKey !== '') ||
-        (f.name.toLowerCase() === file.name.toLowerCase() && f.size === file.size && f.size > 0)
-    );
+    const existingIdx = db.files.findIndex((f) => {
+      const fOwner = f.userId ? f.userId.toLowerCase() : 'admin';
+      if (f.id === file.id) return true;
+      if (f.storageKey === file.storageKey && f.storageKey !== '') return true;
+      if (
+        f.name.toLowerCase() === file.name.toLowerCase() &&
+        f.folderId === file.folderId &&
+        fOwner === u
+      ) {
+        return true;
+      }
+      return false;
+    });
 
     if (existingIdx >= 0) {
       db.files[existingIdx] = {
@@ -449,8 +543,12 @@ class Database {
     if (idx === -1) return null;
 
     const file = db.files[idx];
-    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
-      return null;
+    if (username) {
+      const u = username.toLowerCase();
+      const owner = file.userId ? file.userId.toLowerCase() : 'admin';
+      if (owner !== u) {
+        return null;
+      }
     }
 
     db.files[idx] = {
@@ -474,8 +572,12 @@ class Database {
     );
     if (!file) return false;
 
-    if (username && username !== 'admin' && file.userId && file.userId.toLowerCase() !== username.toLowerCase()) {
-      return false;
+    if (username) {
+      const u = username.toLowerCase();
+      const owner = file.userId ? file.userId.toLowerCase() : 'admin';
+      if (owner !== u) {
+        return false;
+      }
     }
 
     db.files = db.files.filter((f) => f.id !== file.id);
@@ -486,11 +588,15 @@ class Database {
   // --- Folders ---
   async getFolders(username?: string): Promise<CloudFolder[]> {
     const db = await this.load();
-    if (!username || username === 'admin') {
-      return db.folders;
+    if (!username) {
+      return db.folders.filter((f) => f.isSystem);
     }
     const u = username.toLowerCase();
-    return db.folders.filter((f) => f.isSystem || !f.userId || f.userId.toLowerCase() === u);
+    return db.folders.filter((f) => {
+      if (f.isSystem) return true;
+      const owner = f.userId ? f.userId.toLowerCase() : 'admin';
+      return owner === u;
+    });
   }
 
   async getFolderById(id: string): Promise<CloudFolder | null> {
@@ -536,16 +642,24 @@ class Database {
   async getNotes(username?: string): Promise<CloudNote[]> {
     const db = await this.load();
     const notes = db.notes || [];
-    if (!username || username === 'admin') {
-      return notes;
-    }
+    if (!username) return [];
     const u = username.toLowerCase();
-    return notes.filter((n) => !n.userId || n.userId.toLowerCase() === u);
+    return notes.filter((n) => {
+      const owner = n.userId ? n.userId.toLowerCase() : 'admin';
+      return owner === u;
+    });
   }
 
-  async getNoteById(id: string): Promise<CloudNote | null> {
+  async getNoteById(id: string, username?: string): Promise<CloudNote | null> {
     const db = await this.load();
-    return db.notes?.find((n) => n.id === id) || null;
+    const note = db.notes?.find((n) => n.id === id) || null;
+    if (!note) return null;
+    if (username) {
+      const u = username.toLowerCase();
+      const owner = note.userId ? note.userId.toLowerCase() : 'admin';
+      if (owner !== u) return null;
+    }
+    return note;
   }
 
   async addNote(note: CloudNote): Promise<CloudNote> {
@@ -558,14 +672,23 @@ class Database {
 
   async updateNote(
     id: string,
-    updates: Partial<CloudNote>
+    updates: Partial<CloudNote>,
+    username?: string
   ): Promise<CloudNote | null> {
     const db = await this.load();
     db.notes = db.notes || [];
     const idx = db.notes.findIndex((n) => n.id === id);
     if (idx === -1) return null;
+
+    const note = db.notes[idx];
+    if (username) {
+      const u = username.toLowerCase();
+      const owner = note.userId ? note.userId.toLowerCase() : 'admin';
+      if (owner !== u) return null;
+    }
+
     db.notes[idx] = {
-      ...db.notes[idx],
+      ...note,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
@@ -573,16 +696,22 @@ class Database {
     return db.notes[idx];
   }
 
-  async deleteNotePermanently(id: string): Promise<boolean> {
+  async deleteNotePermanently(id: string, username?: string): Promise<boolean> {
     const db = await this.load();
     db.notes = db.notes || [];
-    const prevLen = db.notes.length;
-    db.notes = db.notes.filter((n) => n.id !== id);
-    if (db.notes.length !== prevLen) {
-      await this.persist();
-      return true;
+    const idx = db.notes.findIndex((n) => n.id === id);
+    if (idx === -1) return false;
+
+    const note = db.notes[idx];
+    if (username) {
+      const u = username.toLowerCase();
+      const owner = note.userId ? note.userId.toLowerCase() : 'admin';
+      if (owner !== u) return false;
     }
-    return false;
+
+    db.notes.splice(idx, 1);
+    await this.persist();
+    return true;
   }
 
   // --- Preferences (Per-user persistent isolation) ---

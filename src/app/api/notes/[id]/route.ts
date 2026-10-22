@@ -12,7 +12,7 @@ export async function GET(
   }
 
   const { id } = await params;
-  const note = await db.getNoteById(id);
+  const note = await db.getNoteById(id, session.username);
   if (!note) {
     return NextResponse.json({ error: 'Note not found' }, { status: 404 });
   }
@@ -30,7 +30,7 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const note = await db.getNoteById(id);
+  const note = await db.getNoteById(id, session.username);
   if (!note) {
     return NextResponse.json({ error: 'Note not found' }, { status: 404 });
   }
@@ -52,7 +52,7 @@ export async function PATCH(
     updates.isFavorite = body.isFavorite;
   }
 
-  const updated = await db.updateNote(id, updates);
+  const updated = await db.updateNote(id, updates, session.username);
   return NextResponse.json({ success: true, note: updated });
 }
 
@@ -66,12 +66,12 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const note = await db.getNoteById(id);
+  const note = await db.getNoteById(id, session.username);
   if (!note) {
     return NextResponse.json({ error: 'Note not found' }, { status: 404 });
   }
 
-  await db.deleteNotePermanently(id);
+  await db.deleteNotePermanently(id, session.username);
   return NextResponse.json({
     success: true,
     message: 'Note permanently deleted from cloud database',

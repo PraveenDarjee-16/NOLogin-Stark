@@ -12,6 +12,7 @@ import {
   Folder,
   Zap,
   Terminal,
+  Fingerprint,
 } from 'lucide-react';
 import { StorageStats } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
@@ -23,6 +24,8 @@ interface Props {
   onToggleCrazy: () => void;
   isHackerMode: boolean;
   onToggleHacker: () => void;
+  isPraveenMode: boolean;
+  onTogglePraveen: (origin: { x: number; y: number }) => void;
   onOpenSettings: () => void;
   onOpenWallpapers: () => void;
   onOpenHologramControls: () => void;
@@ -37,6 +40,8 @@ export default function TelemetryHeader({
   onToggleCrazy,
   isHackerMode,
   onToggleHacker,
+  isPraveenMode,
+  onTogglePraveen,
   onOpenSettings,
   onOpenWallpapers,
   onOpenHologramControls,
@@ -44,6 +49,22 @@ export default function TelemetryHeader({
   onLogout,
 }: Props) {
   const [timeStr, setTimeStr] = useState<string>('');
+  const praveenBtnRef = React.useRef<HTMLButtonElement | null>(null);
+
+  const handlePraveenClick = () => {
+    if (praveenBtnRef.current) {
+      const rect = praveenBtnRef.current.getBoundingClientRect();
+      onTogglePraveen({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      });
+    } else {
+      onTogglePraveen({
+        x: typeof window !== 'undefined' ? window.innerWidth - 180 : 400,
+        y: 24,
+      });
+    }
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -113,8 +134,31 @@ export default function TelemetryHeader({
         </div>
       </div>
 
-      {/* Quick Launch, HACKER & CRAZY Buttons & Logout Controls */}
+      {/* Quick Launch, PRAVEEN, HACKER & CRAZY Buttons & Logout Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* PRAVEEN 3D Identity Experience Button */}
+        <button
+          ref={praveenBtnRef}
+          className={`praveen-btn ${isPraveenMode ? 'active' : ''}`}
+          onClick={handlePraveenClick}
+          title={
+            isPraveenMode
+              ? 'PRAVEEN Identity Matrix Active (Click again or press Enter to disengage)'
+              : 'PRAVEEN: Cinematic 3D Identity Flight, Dynamic Typography & Hologram Reveal'
+          }
+          aria-label="Toggle Praveen 3D Identity Experience"
+        >
+          <Fingerprint
+            size={13}
+            style={{
+              color: isPraveenMode ? '#030712' : 'var(--accent-cyan)',
+              filter: isPraveenMode ? 'none' : 'drop-shadow(0 0 4px #00f0ff)',
+            }}
+          />
+          <span>{isPraveenMode ? 'ENGAGED' : 'PRAVEEN'}</span>
+          {isPraveenMode && <span className="praveen-btn-dot" />}
+        </button>
+
         {/* HACKER Cyber Breach Simulation Button */}
         <button
           className={`hacker-btn ${isHackerMode ? 'active' : ''}`}

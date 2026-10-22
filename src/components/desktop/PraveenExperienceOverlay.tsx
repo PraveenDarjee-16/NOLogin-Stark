@@ -1,203 +1,144 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Sparkles, Shield, Cpu, Activity, Fingerprint } from 'lucide-react';
+import * as THREE from 'three';
+import { X, Shield, Activity, Cpu, Fingerprint } from 'lucide-react';
 
 interface Props {
   origin: { x: number; y: number };
   onExit: () => void;
 }
 
-interface LetterConfig {
+// ----------------------------------------------------------------------
+// 1. Procedural 2D Letter Glyphs for Clean Geometric 3D Extrusion
+// ----------------------------------------------------------------------
+function createLetterShape(char: string): THREE.Shape {
+  const s = new THREE.Shape();
+  if (char === 'P') {
+    s.moveTo(0, 0);
+    s.lineTo(0, 42);
+    s.lineTo(22, 42);
+    s.lineTo(28, 36);
+    s.lineTo(28, 24);
+    s.lineTo(22, 18);
+    s.lineTo(9, 18);
+    s.lineTo(9, 0);
+    s.closePath();
+
+    const hole = new THREE.Path();
+    hole.moveTo(9, 26);
+    hole.lineTo(9, 34);
+    hole.lineTo(19, 34);
+    hole.lineTo(21, 32);
+    hole.lineTo(21, 28);
+    hole.lineTo(19, 26);
+    hole.closePath();
+    s.holes.push(hole);
+  } else if (char === 'R') {
+    s.moveTo(0, 0);
+    s.lineTo(0, 42);
+    s.lineTo(22, 42);
+    s.lineTo(28, 36);
+    s.lineTo(28, 24);
+    s.lineTo(22, 18);
+    s.lineTo(28, 0);
+    s.lineTo(19, 0);
+    s.lineTo(14, 18);
+    s.lineTo(9, 18);
+    s.lineTo(9, 0);
+    s.closePath();
+
+    const hole = new THREE.Path();
+    hole.moveTo(9, 26);
+    hole.lineTo(9, 34);
+    hole.lineTo(19, 34);
+    hole.lineTo(21, 32);
+    hole.lineTo(21, 28);
+    hole.lineTo(19, 26);
+    hole.closePath();
+    s.holes.push(hole);
+  } else if (char === 'A') {
+    s.moveTo(0, 0);
+    s.lineTo(11, 42);
+    s.lineTo(19, 42);
+    s.lineTo(30, 0);
+    s.lineTo(21, 0);
+    s.lineTo(19, 9);
+    s.lineTo(11, 9);
+    s.lineTo(9, 0);
+    s.closePath();
+
+    const hole = new THREE.Path();
+    hole.moveTo(12, 16);
+    hole.lineTo(15, 30);
+    hole.lineTo(18, 16);
+    hole.closePath();
+    s.holes.push(hole);
+  } else if (char === 'V') {
+    s.moveTo(0, 42);
+    s.lineTo(11, 0);
+    s.lineTo(19, 0);
+    s.lineTo(30, 42);
+    s.lineTo(21, 42);
+    s.lineTo(15, 14);
+    s.lineTo(9, 42);
+    s.closePath();
+  } else if (char === 'E') {
+    s.moveTo(0, 0);
+    s.lineTo(0, 42);
+    s.lineTo(26, 42);
+    s.lineTo(26, 34);
+    s.lineTo(9, 34);
+    s.lineTo(9, 25);
+    s.lineTo(23, 25);
+    s.lineTo(23, 18);
+    s.lineTo(9, 18);
+    s.lineTo(9, 8);
+    s.lineTo(26, 8);
+    s.lineTo(26, 0);
+    s.closePath();
+  } else if (char === 'N') {
+    s.moveTo(0, 0);
+    s.lineTo(0, 42);
+    s.lineTo(9, 42);
+    s.lineTo(21, 15);
+    s.lineTo(21, 42);
+    s.lineTo(29, 42);
+    s.lineTo(29, 0);
+    s.lineTo(20, 0);
+    s.lineTo(9, 27);
+    s.lineTo(9, 0);
+    s.closePath();
+  }
+  return s;
+}
+
+// ----------------------------------------------------------------------
+// 2. Configuration for the 7 Distinct 3D Letter Masterpieces
+// ----------------------------------------------------------------------
+interface LetterData {
   char: string;
-  index: number;
-  matClass: string;
   name: string;
-  description: string;
-  // Kinetic parameters
+  material: THREE.Material;
+  edgeColor: number;
+  launchDelay: number;
   orbitRadius: number;
   orbitSpeed: number;
-  orbitInclination: number; // Pitch tilt of orbit plane in radians
+  orbitPitch: number;
   orbitPhase: number;
   rotSpeedX: number;
   rotSpeedY: number;
   rotSpeedZ: number;
-  // Wide flight curve frequencies
-  flightFreqX: number;
-  flightFreqY: number;
-  flightFreqZ: number;
-  flightAmpX: number;
-  flightAmpY: number;
-  flightAmpZ: number;
-}
-
-const LETTERS_CONFIG: LetterConfig[] = [
-  {
-    char: 'P',
-    index: 0,
-    matClass: 'mat-titanium',
-    name: 'Titanium Hologram',
-    description: 'Brushed titanium with cyan laser edge extrusion',
-    orbitRadius: 260,
-    orbitSpeed: 0.65,
-    orbitInclination: 0.35,
-    orbitPhase: 0,
-    rotSpeedX: 0.8,
-    rotSpeedY: 1.2,
-    rotSpeedZ: 0.4,
-    flightFreqX: 1.1,
-    flightFreqY: 0.8,
-    flightFreqZ: 1.4,
-    flightAmpX: 380,
-    flightAmpY: 260,
-    flightAmpZ: 220,
-  },
-  {
-    char: 'R',
-    index: 1,
-    matClass: 'mat-crimson',
-    name: 'Crimson Energy Alloy',
-    description: 'Dark gunmetal chrome with hot red Stark laser core',
-    orbitRadius: 285,
-    orbitSpeed: -0.75,
-    orbitInclination: -0.42,
-    orbitPhase: (Math.PI * 2) / 7,
-    rotSpeedX: 1.5,
-    rotSpeedY: 0.9,
-    rotSpeedZ: 1.1,
-    flightFreqX: 0.9,
-    flightFreqY: 1.3,
-    flightFreqZ: 0.7,
-    flightAmpX: 420,
-    flightAmpY: 300,
-    flightAmpZ: 260,
-  },
-  {
-    char: 'A',
-    index: 2,
-    matClass: 'mat-crystal',
-    name: 'Crystal Prism',
-    description: 'Refractive ice-blue prism with iridescent facets',
-    orbitRadius: 310,
-    orbitSpeed: 0.55,
-    orbitInclination: 0.25,
-    orbitPhase: ((Math.PI * 2) / 7) * 2,
-    rotSpeedX: 0.7,
-    rotSpeedY: 1.4,
-    rotSpeedZ: 0.6,
-    flightFreqX: 1.3,
-    flightFreqY: 0.7,
-    flightFreqZ: 1.1,
-    flightAmpX: 460,
-    flightAmpY: 240,
-    flightAmpZ: 280,
-  },
-  {
-    char: 'V',
-    index: 3,
-    matClass: 'mat-obsidian',
-    name: 'Obsidian Chrome',
-    description: 'Ultra-glossy black obsidian with specular violet reflection',
-    orbitRadius: 330,
-    orbitSpeed: -0.85,
-    orbitInclination: -0.3,
-    orbitPhase: ((Math.PI * 2) / 7) * 3,
-    rotSpeedX: 1.2,
-    rotSpeedY: 1.1,
-    rotSpeedZ: 1.3,
-    flightFreqX: 0.8,
-    flightFreqY: 1.2,
-    flightFreqZ: 1.5,
-    flightAmpX: 400,
-    flightAmpY: 320,
-    flightAmpZ: 240,
-  },
-  {
-    char: 'E',
-    index: 4,
-    matClass: 'mat-neon',
-    name: 'Neon Glass',
-    description: 'High-emission electric cyan neon body with laser outline',
-    orbitRadius: 295,
-    orbitSpeed: 0.72,
-    orbitInclination: 0.45,
-    orbitPhase: ((Math.PI * 2) / 7) * 4,
-    rotSpeedX: 0.9,
-    rotSpeedY: 1.5,
-    rotSpeedZ: 0.5,
-    flightFreqX: 1.2,
-    flightFreqY: 0.9,
-    flightFreqZ: 0.8,
-    flightAmpX: 440,
-    flightAmpY: 270,
-    flightAmpZ: 250,
-  },
-  {
-    char: 'E',
-    index: 5,
-    matClass: 'mat-gold',
-    name: 'Golden Plasma Metal',
-    description: 'Stark Mark-armor gold with warm incandescent plasma aura',
-    orbitRadius: 320,
-    orbitSpeed: -0.62,
-    orbitInclination: -0.38,
-    orbitPhase: ((Math.PI * 2) / 7) * 5,
-    rotSpeedX: 1.1,
-    rotSpeedY: 0.8,
-    rotSpeedZ: 1.2,
-    flightFreqX: 0.7,
-    flightFreqY: 1.4,
-    flightFreqZ: 1.2,
-    flightAmpX: 480,
-    flightAmpY: 290,
-    flightAmpZ: 270,
-  },
-  {
-    char: 'N',
-    index: 6,
-    matClass: 'mat-quantum',
-    name: 'Quantum Alloy',
-    description: 'Dual-spectrum quantum alloy with cyan and magenta split rims',
-    orbitRadius: 345,
-    orbitSpeed: 0.8,
-    orbitInclination: 0.28,
-    orbitPhase: ((Math.PI * 2) / 7) * 6,
-    rotSpeedX: 1.4,
-    rotSpeedY: 1.3,
-    rotSpeedZ: 0.9,
-    flightFreqX: 1.0,
-    flightFreqY: 1.1,
-    flightFreqZ: 1.3,
-    flightAmpX: 450,
-    flightAmpY: 310,
-    flightAmpZ: 300,
-  },
-];
-
-interface Particle {
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  color: string;
-  size: number;
-  alpha: number;
-  maxLife: number;
-  life: number;
 }
 
 export default function PraveenExperienceOverlay({ origin, onExit }: Props) {
-  const [isExiting, setIsExiting] = useState(false);
-  const [portraitLoaded, setPortraitLoaded] = useState(false);
-  const [hudPhase, setHudPhase] = useState<'activating' | 'launching' | 'flight' | 'formation' | 'orbital'>('activating');
-  const [portraitOpacity, setPortraitOpacity] = useState(0);
-
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const letterRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const animFrameRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const [lifecycle, setLifecycle] = useState<'INTRO' | 'LETTER_ORBIT' | 'PORTRAIT_REVEAL' | 'ACTIVE'>('INTRO');
+  const [isExiting, setIsExiting] = useState(false);
+  const [portraitError, setPortraitError] = useState(false);
+
+  const animFrameId = useRef<number | null>(null);
   const mouseRef = useRef<{ x: number; y: number; targetX: number; targetY: number }>({
     x: 0,
     y: 0,
@@ -205,20 +146,15 @@ export default function PraveenExperienceOverlay({ origin, onExit }: Props) {
     targetY: 0,
   });
 
-  // Kinetic Particle pool
-  const particlesRef = useRef<Particle[]>([]);
-  const trailsRef = useRef<Array<{ x: number; y: number }[]>>([[], [], [], [], [], [], []]);
-
-  // Handle smooth exit
   const triggerExit = useCallback(() => {
     if (isExiting) return;
     setIsExiting(true);
     setTimeout(() => {
       onExit();
-    }, 450);
+    }, 400);
   }, [isExiting, onExit]);
 
-  // Global Keyboard listener: ENTER or ESCAPE triggers instant clean exit
+  // Keyboard navigation: Enter or Escape immediately disengages
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === 'Escape') {
@@ -231,547 +167,727 @@ export default function PraveenExperienceOverlay({ origin, onExit }: Props) {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [triggerExit]);
 
-  // Mouse move parallax listener
+  // Interactive mouse parallax tracking
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      mouseRef.current.targetX = (e.clientX - centerX) / centerX;
-      mouseRef.current.targetY = (e.clientY - centerY) / centerY;
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      mouseRef.current.targetX = (e.clientX - cx) / cx;
+      mouseRef.current.targetY = (e.clientY - cy) / cy;
     };
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Main 3D Animation Engine Loop
+  // ----------------------------------------------------------------------
+  // 3. Main Real-Time WebGL Three.js Scene Setup & Loop
+  // ----------------------------------------------------------------------
   useEffect(() => {
-    startTimeRef.current = performance.now();
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
 
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
+    let width = window.innerWidth;
+    let height = window.innerHeight;
 
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance',
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(width, height);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.25;
+
+    // Scene & Camera
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x020617, 0.0006);
+
+    const camera = new THREE.PerspectiveCamera(50, width / height, 1, 3000);
+    camera.position.set(0, 0, 680);
+
+    // Coordinate conversion: map screen button coordinates to 3D world space at z = 0
+    function getOriginWorld(): THREE.Vector3 {
+      const ndcX = (origin.x / width) * 2 - 1;
+      const ndcY = -(origin.y / height) * 2 + 1;
+      const v = new THREE.Vector3(ndcX, ndcY, 0.5);
+      v.unproject(camera);
+      const dir = v.sub(camera.position).normalize();
+      const dist = -camera.position.z / dir.z;
+      return camera.position.clone().add(dir.multiplyScalar(dist));
+    }
+    const originWorld = getOriginWorld();
+
+    // ----------------------------------------------------
+    // Lighting Rig
+    // ----------------------------------------------------
+    const ambientLight = new THREE.AmbientLight(0x0a1a36, 1.4);
+    scene.add(ambientLight);
+
+    // Key Light (Crisp White / Ice-Blue)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.8);
+    keyLight.position.set(300, 450, 450);
+    scene.add(keyLight);
+
+    // Rim / Accent Light (Stark Violet / Magenta)
+    const fillLight = new THREE.DirectionalLight(0x8b5cf6, 2.2);
+    fillLight.position.set(-350, -250, 250);
+    scene.add(fillLight);
+
+    // Central Reactor Point Light (Pulsing Cyan Core)
+    const corePointLight = new THREE.PointLight(0x00f0ff, 3.5, 750, 1.2);
+    corePointLight.position.set(0, 0, 70);
+    scene.add(corePointLight);
+
+    // Warm Gold Backlight
+    const backGoldLight = new THREE.DirectionalLight(0xf59e0b, 1.6);
+    backGoldLight.position.set(0, 300, -250);
+    scene.add(backGoldLight);
+
+    // ----------------------------------------------------
+    // 3D Letter Extrusion Geometries & Distinct Materials
+    // ----------------------------------------------------
+    const lettersData: LetterData[] = [
+      {
+        char: 'P',
+        name: 'Titanium Hologram',
+        material: new THREE.MeshStandardMaterial({
+          color: 0xdde6ed,
+          metalness: 0.95,
+          roughness: 0.18,
+          emissive: 0x00f0ff,
+          emissiveIntensity: 0.25,
+        }),
+        edgeColor: 0x00f0ff,
+        launchDelay: 0.5,
+        orbitRadius: 240,
+        orbitSpeed: 0.72,
+        orbitPitch: 0.35,
+        orbitPhase: 0,
+        rotSpeedX: 0.8,
+        rotSpeedY: 1.2,
+        rotSpeedZ: 0.4,
+      },
+      {
+        char: 'R',
+        name: 'Crimson Energy Alloy',
+        material: new THREE.MeshStandardMaterial({
+          color: 0x8b0000,
+          metalness: 0.9,
+          roughness: 0.2,
+          emissive: 0xef4444,
+          emissiveIntensity: 0.45,
+        }),
+        edgeColor: 0xef4444,
+        launchDelay: 0.68,
+        orbitRadius: 265,
+        orbitSpeed: -0.78,
+        orbitPitch: -0.4,
+        orbitPhase: (Math.PI * 2) / 7,
+        rotSpeedX: 1.4,
+        rotSpeedY: 0.9,
+        rotSpeedZ: 1.1,
+      },
+      {
+        char: 'A',
+        name: 'Crystal Prism',
+        material: new THREE.MeshPhysicalMaterial({
+          color: 0xe0f7fa,
+          metalness: 0.1,
+          roughness: 0.08,
+          transmission: 0.88,
+          ior: 1.52,
+          transparent: true,
+          opacity: 0.92,
+          emissive: 0x38bdf8,
+          emissiveIntensity: 0.35,
+        }),
+        edgeColor: 0xbae6fd,
+        launchDelay: 0.86,
+        orbitRadius: 290,
+        orbitSpeed: 0.6,
+        orbitPitch: 0.25,
+        orbitPhase: ((Math.PI * 2) / 7) * 2,
+        rotSpeedX: 0.7,
+        rotSpeedY: 1.4,
+        rotSpeedZ: 0.5,
+      },
+      {
+        char: 'V',
+        name: 'Obsidian Chrome',
+        material: new THREE.MeshStandardMaterial({
+          color: 0x0c0618,
+          metalness: 0.98,
+          roughness: 0.08,
+          emissive: 0xa855f7,
+          emissiveIntensity: 0.42,
+        }),
+        edgeColor: 0xc084fc,
+        launchDelay: 1.04,
+        orbitRadius: 310,
+        orbitSpeed: -0.85,
+        orbitPitch: -0.32,
+        orbitPhase: ((Math.PI * 2) / 7) * 3,
+        rotSpeedX: 1.2,
+        rotSpeedY: 1.1,
+        rotSpeedZ: 1.3,
+      },
+      {
+        char: 'E',
+        name: 'Neon Glass',
+        material: new THREE.MeshPhysicalMaterial({
+          color: 0x00f0ff,
+          metalness: 0.25,
+          roughness: 0.05,
+          transmission: 0.75,
+          transparent: true,
+          opacity: 0.88,
+          emissive: 0x00f0ff,
+          emissiveIntensity: 0.8,
+        }),
+        edgeColor: 0x00f0ff,
+        launchDelay: 1.22,
+        orbitRadius: 275,
+        orbitSpeed: 0.75,
+        orbitPitch: 0.42,
+        orbitPhase: ((Math.PI * 2) / 7) * 4,
+        rotSpeedX: 0.9,
+        rotSpeedY: 1.5,
+        rotSpeedZ: 0.6,
+      },
+      {
+        char: 'E',
+        name: 'Golden Plasma Metal',
+        material: new THREE.MeshStandardMaterial({
+          color: 0xf59e0b,
+          metalness: 0.92,
+          roughness: 0.16,
+          emissive: 0xd97706,
+          emissiveIntensity: 0.45,
+        }),
+        edgeColor: 0xfbbf24,
+        launchDelay: 1.4,
+        orbitRadius: 300,
+        orbitSpeed: -0.65,
+        orbitPitch: -0.38,
+        orbitPhase: ((Math.PI * 2) / 7) * 5,
+        rotSpeedX: 1.1,
+        rotSpeedY: 0.8,
+        rotSpeedZ: 1.2,
+      },
+      {
+        char: 'N',
+        name: 'Quantum Alloy',
+        material: new THREE.MeshStandardMaterial({
+          color: 0x111827,
+          metalness: 0.95,
+          roughness: 0.14,
+          emissive: 0xec4899,
+          emissiveIntensity: 0.45,
+        }),
+        edgeColor: 0x00f0ff,
+        launchDelay: 1.58,
+        orbitRadius: 325,
+        orbitSpeed: 0.82,
+        orbitPitch: 0.28,
+        orbitPhase: ((Math.PI * 2) / 7) * 6,
+        rotSpeedX: 1.4,
+        rotSpeedY: 1.3,
+        rotSpeedZ: 0.9,
+      },
+    ];
+
+    // Build extruded meshes with beveled edges and wireframe glowing rims
+    const letterMeshes: THREE.Group[] = [];
+    lettersData.forEach((cfg) => {
+      const shape = createLetterShape(cfg.char);
+      const geom = new THREE.ExtrudeGeometry(shape, {
+        depth: 10,
+        bevelEnabled: true,
+        bevelThickness: 2.2,
+        bevelSize: 1.6,
+        bevelSegments: 3,
+      });
+      geom.center();
+
+      const mainMesh = new THREE.Mesh(geom, cfg.material);
+
+      // Glowing edge outline
+      const edgesGeom = new THREE.EdgesGeometry(geom, 22);
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: cfg.edgeColor,
+        transparent: true,
+        opacity: 0.85,
+        linewidth: 2,
+      });
+      const edgeLines = new THREE.LineSegments(edgesGeom, edgeMat);
+
+      const group = new THREE.Group();
+      group.add(mainMesh);
+      group.add(edgeLines);
+      group.position.copy(originWorld);
+      group.scale.set(0.001, 0.001, 0.001);
+      group.visible = false;
+
+      scene.add(group);
+      letterMeshes.push(group);
+    });
+
+    // ----------------------------------------------------
+    // Central Holographic Portal & User Photo Medallion
+    // ----------------------------------------------------
+    const portalGroup = new THREE.Group();
+    portalGroup.position.set(0, 20, 0);
+    portalGroup.scale.set(0.001, 0.001, 0.001);
+    scene.add(portalGroup);
+
+    // 1. Portrait Texture Disc
+    const portraitRadius = 105;
+    const portraitGeom = new THREE.CircleGeometry(portraitRadius, 64);
+
+    const textureLoader = new THREE.TextureLoader();
+    let portraitMat: THREE.MeshStandardMaterial;
+
+    const portraitTexture = textureLoader.load(
+      '/images/praveen-identity.jpg',
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.center.set(0.5, 0.5);
+        // Slight scale adjustment to frame Praveen's face and Iron Spider suit beautifully
+        tex.repeat.set(1.1, 1.1);
+        tex.offset.set(-0.05, -0.05);
+      },
+      undefined,
+      (err) => {
+        console.warn('Custom portrait texture load failed:', err);
+        setPortraitError(true);
+      }
+    );
+
+    portraitMat = new THREE.MeshStandardMaterial({
+      map: portraitTexture,
+      roughness: 0.35,
+      metalness: 0.2,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+    });
+    const portraitMesh = new THREE.Mesh(portraitGeom, portraitMat);
+    portalGroup.add(portraitMesh);
+
+    // 2. Metallic Beveled Ring hugging the portrait
+    const borderRingGeom = new THREE.TorusGeometry(portraitRadius + 3, 4, 16, 64);
+    const borderRingMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      metalness: 0.95,
+      roughness: 0.15,
+      emissive: 0x00f0ff,
+      emissiveIntensity: 0.3,
+    });
+    const borderRingMesh = new THREE.Mesh(borderRingGeom, borderRingMat);
+    portalGroup.add(borderRingMesh);
+
+    // 3. Counter-rotating Holographic HUD Rings
+    const midRingGeom = new THREE.RingGeometry(portraitRadius + 16, portraitRadius + 18, 64);
+    const midRingMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide,
+    });
+    const midRingMesh = new THREE.Mesh(midRingGeom, midRingMat);
+    portalGroup.add(midRingMesh);
+
+    const outerRingGeom = new THREE.RingGeometry(portraitRadius + 28, portraitRadius + 30, 64);
+    const outerRingMat = new THREE.MeshBasicMaterial({
+      color: 0xf59e0b,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+    });
+    const outerRingMesh = new THREE.Mesh(outerRingGeom, outerRingMat);
+    portalGroup.add(outerRingMesh);
+
+    // Segmented cyan HUD ticks
+    const tickRingGeom = new THREE.RingGeometry(portraitRadius + 40, portraitRadius + 44, 48);
+    const tickRingMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.45,
+    });
+    const tickRingMesh = new THREE.Mesh(tickRingGeom, tickRingMat);
+    portalGroup.add(tickRingMesh);
+
+    // 4. Sweeping Laser Scanner Bar
+    const laserGeom = new THREE.CylinderGeometry(1.6, 1.6, portraitRadius * 2 + 10, 16);
+    const laserMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const laserMesh = new THREE.Mesh(laserGeom, laserMat);
+    laserMesh.rotation.z = Math.PI / 2;
+    laserMesh.position.set(0, 0, 4);
+    portalGroup.add(laserMesh);
+
+    // ----------------------------------------------------
+    // Floating Atmospheric Particle Field
+    // ----------------------------------------------------
+    const particleCount = 450;
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleColors = new Float32Array(particleCount * 3);
+
+    const cCyan = new THREE.Color(0x00f0ff);
+    const cGold = new THREE.Color(0xf59e0b);
+    const cViolet = new THREE.Color(0xa855f7);
+
+    for (let p = 0; p < particleCount; p++) {
+      particlePositions[p * 3] = (Math.random() - 0.5) * 1200;
+      particlePositions[p * 3 + 1] = (Math.random() - 0.5) * 800;
+      particlePositions[p * 3 + 2] = (Math.random() - 0.5) * 600;
+
+      const pick = Math.random();
+      const col = pick > 0.6 ? cCyan : pick > 0.3 ? cGold : cViolet;
+      particleColors[p * 3] = col.r;
+      particleColors[p * 3 + 1] = col.g;
+      particleColors[p * 3 + 2] = col.b;
+    }
+
+    const particleGeom = new THREE.BufferGeometry();
+    particleGeom.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    particleGeom.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
+    const particleMat = new THREE.PointsMaterial({
+      size: 3.5,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.65,
+      blending: THREE.AdditiveBlending,
+    });
+    const particleField = new THREE.Points(particleGeom, particleMat);
+    scene.add(particleField);
+
+    // ----------------------------------------------------
+    // Resize Handler
+    // ----------------------------------------------------
     const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+      width = window.innerWidth;
+      height = window.innerHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
     };
     window.addEventListener('resize', handleResize);
 
-    // Initial shockwave particles from the button origin
-    for (let i = 0; i < 90; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 8;
-      particlesRef.current.push({
-        x: origin.x,
-        y: origin.y,
-        z: 0,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        vz: (Math.random() - 0.5) * 4,
-        color: Math.random() > 0.4 ? '#00f0ff' : '#a855f7',
-        size: 1.5 + Math.random() * 3,
-        alpha: 0.9,
-        maxLife: 60 + Math.random() * 40,
-        life: 0,
-      });
-    }
+    // ----------------------------------------------------
+    // 4. ANIMATION CHOREOGRAPHY LOOP
+    // ----------------------------------------------------
+    const startTime = performance.now();
 
-    const animate = (now: number) => {
-      const elapsed = (now - startTimeRef.current) / 1000; // seconds
+    const render = (now: number) => {
+      const t = (now - startTime) / 1000; // elapsed time in seconds
 
-      // Smooth mouse lerp
+      // Mouse Parallax Lerp
       mouseRef.current.x += (mouseRef.current.targetX - mouseRef.current.x) * 0.05;
       mouseRef.current.y += (mouseRef.current.targetY - mouseRef.current.y) * 0.05;
 
-      const screenCenterX = width / 2;
-      const screenCenterY = height / 2;
+      camera.position.x = mouseRef.current.x * 65;
+      camera.position.y = -mouseRef.current.y * 45;
+      camera.lookAt(0, 0, 0);
 
-      // Update Phase State for HUD
-      if (elapsed < 0.7) {
-        setHudPhase('activating');
-      } else if (elapsed < 2.0) {
-        setHudPhase('launching');
-      } else if (elapsed < 4.5) {
-        setHudPhase('flight');
-      } else if (elapsed < 6.0) {
-        setHudPhase('formation');
-      } else {
-        setHudPhase('orbital');
-      }
+      // Core Point Light pulse
+      corePointLight.intensity = 2.8 + Math.sin(t * 4) * 0.9;
 
-      // Portrait fade-in logic (emerges around 4.8s to 6.0s)
-      if (elapsed >= 4.6 && elapsed <= 6.2) {
-        const pProgress = (elapsed - 4.6) / 1.6;
-        setPortraitOpacity(Math.min(1, pProgress));
-      } else if (elapsed > 6.2) {
-        setPortraitOpacity(1);
-      }
+      // Rotate particle field slowly
+      particleField.rotation.y = t * 0.03;
+      particleField.rotation.z = t * 0.015;
+
+      // Rotate HUD rings
+      midRingMesh.rotation.z = -t * 0.4;
+      outerRingMesh.rotation.z = t * 0.25;
+      tickRingMesh.rotation.z = -t * 0.15;
+
+      // Laser scanner sweep across portrait
+      const scanPeriod = (t * 1.8) % 2; // sweeps down over ~1.1s
+      laserMesh.position.y = (1 - scanPeriod) * portraitRadius;
 
       // ----------------------------------------------------
-      // 1. CLEAR & RENDER CANVAS (Cyber Grid, Particle Trails)
+      // LIFECYCLE STAGE 1: INTRO (0s - 2.0s)
+      // Letters launch from the actual PRAVEEN button position
       // ----------------------------------------------------
-      ctx.clearRect(0, 0, width, height);
+      if (t < 2.0) {
+        setLifecycle('INTRO');
 
-      // Faint futuristic perspective grid on floor
-      ctx.save();
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.07)';
-      ctx.lineWidth = 1;
-      const gridY = screenCenterY + 220;
-      for (let x = -width; x < width * 2; x += 60) {
-        ctx.beginPath();
-        ctx.moveTo(screenCenterX + (x - screenCenterX) * 0.1, gridY);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = gridY; y < height; y += 28) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-      ctx.restore();
+        lettersData.forEach((cfg, i) => {
+          const group = letterMeshes[i];
+          if (t < cfg.launchDelay) {
+            group.visible = false;
+            group.position.copy(originWorld);
+            group.scale.set(0.001, 0.001, 0.001);
+          } else {
+            group.visible = true;
+            const p = (t - cfg.launchDelay) / (2.0 - cfg.launchDelay);
+            const easeOut = 1 - Math.pow(1 - p, 3); // High-speed cubic burst outward
 
-      // Opening activation shockwaves from button origin (0s - 1.2s)
-      if (elapsed < 1.4) {
-        const ringRadius = elapsed * 380;
-        const ringAlpha = Math.max(0, 1 - elapsed / 1.4);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(origin.x, origin.y, ringRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(0, 240, 255, ${ringAlpha * 0.8})`;
-        ctx.lineWidth = 2.5;
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 18;
-        ctx.stroke();
+            group.scale.setScalar(0.2 + easeOut * 0.85);
 
-        ctx.beginPath();
-        ctx.arc(origin.x, origin.y, ringRadius * 0.6, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(168, 85, 247, ${ringAlpha * 0.6})`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.restore();
-      }
+            // Fly outward from button into initial 3D orbital trajectory
+            const burstAngle = (Math.PI / 4) + (i / 6) * (Math.PI * 1.5) + cfg.orbitPhase;
+            const targetX = Math.cos(burstAngle) * (200 + i * 20);
+            const targetY = Math.sin(burstAngle) * (140 + i * 15);
+            const targetZ = Math.sin(burstAngle * 2) * 80;
 
-      // ----------------------------------------------------
-      // 2. CHOREOGRAPH EACH OF THE 7 3D LETTERS
-      // ----------------------------------------------------
-      LETTERS_CONFIG.forEach((cfg, i) => {
-        const el = letterRefs.current[i];
-        if (!el) return;
+            group.position.x = originWorld.x + (targetX - originWorld.x) * easeOut;
+            group.position.y = originWorld.y + (targetY - originWorld.y) * easeOut;
+            group.position.z = originWorld.z + (targetZ - originWorld.z) * easeOut;
 
-        let posX = origin.x;
-        let posY = origin.y;
-        let posZ = 0;
-        let rotX = 0;
-        let rotY = 0;
-        let rotZ = 0;
-        let scale = 1;
-        let opacity = 0;
-
-        const launchTime = 0.7 + i * 0.18;
-
-        if (elapsed < launchTime) {
-          // Pre-launch: letter is hidden at the button
-          opacity = 0;
-          scale = 0.1;
-          posX = origin.x;
-          posY = origin.y;
-        } else if (elapsed >= launchTime && elapsed < 2.0) {
-          // ----------------------------------------------------
-          // LAUNCH STAGE (0.7s - 2.0s): Burst escape from button
-          // ----------------------------------------------------
-          const launchProgress = (elapsed - launchTime) / (2.0 - launchTime);
-          // Rapid cubic expansion
-          const easeOut = 1 - Math.pow(1 - launchProgress, 3);
-
-          opacity = Math.min(1, launchProgress * 2.5);
-          scale = 0.3 + easeOut * 0.9;
-
-          // Target point in screen space to fly towards initially
-          const outwardAngle = (Math.PI / 4) + (i / 6) * (Math.PI * 1.5) + cfg.orbitPhase;
-          const burstDist = 280 + i * 45;
-          const targetBurstX = origin.x + Math.cos(outwardAngle) * burstDist;
-          const targetBurstY = origin.y + Math.sin(outwardAngle) * burstDist;
-
-          posX = origin.x + (targetBurstX - origin.x) * easeOut;
-          posY = origin.y + (targetBurstY - origin.y) * easeOut;
-          posZ = easeOut * 180;
-
-          rotX = launchProgress * 360 * cfg.rotSpeedX;
-          rotY = launchProgress * 420 * cfg.rotSpeedY;
-          rotZ = launchProgress * 180 * cfg.rotSpeedZ;
-
-          // Emit particles on launch
-          if (Math.random() > 0.4) {
-            particlesRef.current.push({
-              x: posX,
-              y: posY,
-              z: posZ,
-              vx: (Math.random() - 0.5) * 4,
-              vy: (Math.random() - 0.5) * 4,
-              vz: (Math.random() - 0.5) * 4,
-              color: i % 2 === 0 ? '#00f0ff' : '#f59e0b',
-              size: 2 + Math.random() * 2,
-              alpha: 0.9,
-              maxLife: 35,
-              life: 0,
-            });
+            group.rotation.x = p * Math.PI * 4 * cfg.rotSpeedX;
+            group.rotation.y = p * Math.PI * 4 * cfg.rotSpeedY;
+            group.rotation.z = p * Math.PI * 2 * cfg.rotSpeedZ;
           }
-        } else if (elapsed >= 2.0 && elapsed < 4.5) {
-          // ----------------------------------------------------
-          // FLIGHT STAGE (2.0s - 4.5s): Sweeping 3D paths
-          // ----------------------------------------------------
-          const flightTime = elapsed - 2.0;
-          opacity = 1;
-          scale = 1;
-
-          // Multi-harmonic 3D Lissajous curve
-          const angleX = flightTime * cfg.flightFreqX + cfg.orbitPhase;
-          const angleY = flightTime * cfg.flightFreqY + cfg.orbitPhase * 1.3;
-          const angleZ = flightTime * cfg.flightFreqZ + cfg.orbitPhase * 0.7;
-
-          posX = screenCenterX + Math.sin(angleX) * cfg.flightAmpX;
-          posY = screenCenterY + Math.cos(angleY) * cfg.flightAmpY;
-          posZ = Math.sin(angleZ) * cfg.flightAmpZ;
-
-          rotX = flightTime * 140 * cfg.rotSpeedX;
-          rotY = flightTime * 180 * cfg.rotSpeedY;
-          rotZ = flightTime * 90 * cfg.rotSpeedZ;
-        } else if (elapsed >= 4.5 && elapsed < 6.0) {
-          // ----------------------------------------------------
-          // CONVERGENCE STAGE (4.5s - 6.0s): Form into 3D name
-          // ----------------------------------------------------
-          const convProgress = (elapsed - 4.5) / 1.5;
-          const easeInOut =
-            convProgress < 0.5
-              ? 2 * convProgress * convProgress
-              : 1 - Math.pow(-2 * convProgress + 2, 2) / 2;
-
-          opacity = 1;
-
-          // End of flight position
-          const flightTime = 2.5;
-          const lastFlightX = screenCenterX + Math.sin(flightTime * cfg.flightFreqX + cfg.orbitPhase) * cfg.flightAmpX;
-          const lastFlightY = screenCenterY + Math.cos(flightTime * cfg.flightFreqY + cfg.orbitPhase * 1.3) * cfg.flightAmpY;
-          const lastFlightZ = Math.sin(flightTime * cfg.flightFreqZ + cfg.orbitPhase * 0.7) * cfg.flightAmpZ;
-
-          // Aligned Name Formation Target (Arc layout across equator)
-          const letterSpacing = width < 768 ? 48 : 82;
-          const targetFormX = screenCenterX + (i - 3) * letterSpacing;
-          const targetFormY = screenCenterY + (width < 768 ? 160 : 190); // Positioned elegantly below the central portrait
-          const targetFormZ = -Math.abs(i - 3) * 22; // Curving backward slightly like a panoramic 3D ribbon
-
-          posX = lastFlightX + (targetFormX - lastFlightX) * easeInOut;
-          posY = lastFlightY + (targetFormY - lastFlightY) * easeInOut;
-          posZ = lastFlightZ + (targetFormZ - lastFlightZ) * easeInOut;
-
-          // Align rotation to face forward with subtle 3D angle
-          const targetRotY = (i - 3) * -7;
-          rotX = (1 - easeInOut) * 120;
-          rotY = targetRotY * easeInOut + (1 - easeInOut) * 180;
-          rotZ = (1 - easeInOut) * 45;
-        } else {
-          // ----------------------------------------------------
-          // CONTINUOUS 3D ORBITAL NAME STAGE (6.0s+ indefinitely)
-          // Features periodic harmonized readable alignment every 10s!
-          // ----------------------------------------------------
-          opacity = 1;
-          const orbitTime = elapsed - 6.0;
-          const cycleDuration = 10; // 10 second choreographic cycle
-          const cyclePhase = orbitTime % cycleDuration;
-
-          // Letter spacing for aligned layout
-          const letterSpacing = width < 768 ? 46 : 80;
-          const alignedX = screenCenterX + (i - 3) * letterSpacing;
-          const alignedY = screenCenterY + (width < 768 ? 160 : 190);
-          const alignedZ = -Math.abs(i - 3) * 18;
-
-          // Calculate 3D Elliptical Orbit
-          const currentOrbitAngle = orbitTime * cfg.orbitSpeed + cfg.orbitPhase;
-          const rawOrbitX = Math.cos(currentOrbitAngle) * cfg.orbitRadius;
-          const rawOrbitY = Math.sin(currentOrbitAngle) * (cfg.orbitRadius * 0.55);
-          // Apply 3D orbital plane inclination tilt
-          const inclinedY = rawOrbitY * Math.cos(cfg.orbitInclination) - Math.sin(currentOrbitAngle) * 70 * Math.sin(cfg.orbitInclination);
-          const inclinedZ = rawOrbitY * Math.sin(cfg.orbitInclination) + Math.sin(currentOrbitAngle) * 140;
-
-          const freeOrbitX = screenCenterX + rawOrbitX;
-          const freeOrbitY = screenCenterY + inclinedY;
-          const freeOrbitZ = inclinedZ;
-
-          // Alignment window: between 7.0s and 9.5s of every 10s cycle,
-          // letters smoothly converge into the readable PRAVEEN name, hold, then separate!
-          let alignFactor = 0;
-          if (cyclePhase > 6.5 && cyclePhase < 9.5) {
-            if (cyclePhase < 7.5) {
-              // Transition in
-              alignFactor = (cyclePhase - 6.5) / 1.0;
-            } else if (cyclePhase < 8.5) {
-              // Hold aligned
-              alignFactor = 1;
-            } else {
-              // Transition out
-              alignFactor = 1 - (cyclePhase - 8.5) / 1.0;
-            }
-          }
-
-          // Smooth interpolation between free orbit & readable alignment
-          posX = freeOrbitX * (1 - alignFactor) + alignedX * alignFactor;
-          posY = freeOrbitY * (1 - alignFactor) + alignedY * alignFactor;
-          posZ = freeOrbitZ * (1 - alignFactor) + alignedZ * alignFactor;
-
-          // Individual tumble + Alignment lock
-          const freeRotX = orbitTime * 65 * cfg.rotSpeedX;
-          const freeRotY = (currentOrbitAngle * (180 / Math.PI)) + orbitTime * 45 * cfg.rotSpeedY;
-          const freeRotZ = Math.sin(orbitTime + i) * 25;
-
-          const alignedRotX = 0;
-          const alignedRotY = (i - 3) * -6;
-          const alignedRotZ = 0;
-
-          rotX = freeRotX * (1 - alignFactor) + alignedRotX * alignFactor;
-          rotY = freeRotY * (1 - alignFactor) + alignedRotY * alignFactor;
-          rotZ = freeRotZ * (1 - alignFactor) + alignedRotZ * alignFactor;
-        }
-
-        // Apply Mouse Parallax
-        const parallaxX = mouseRef.current.x * 35;
-        const parallaxY = mouseRef.current.y * 25;
-
-        // Apply 3D CSS Transforms directly
-        el.style.transform = `translate3d(${posX + parallaxX - 36}px, ${posY + parallaxY - 45}px, ${posZ}px) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg) scale(${scale})`;
-        el.style.opacity = opacity.toString();
-
-        // ----------------------------------------------------
-        // Record trail coordinates for canvas glow ribbon
-        // ----------------------------------------------------
-        if (opacity > 0.3) {
-          const trail = trailsRef.current[i];
-          trail.push({ x: posX + parallaxX, y: posY + parallaxY });
-          if (trail.length > 14) trail.shift();
-        }
-      });
-
-      // ----------------------------------------------------
-      // 3. DRAW LUMINOUS PARTICLE TRAILS FOR EACH LETTER
-      // ----------------------------------------------------
-      ctx.save();
-      trailsRef.current.forEach((trail, i) => {
-        if (trail.length < 2) return;
-        ctx.beginPath();
-        ctx.moveTo(trail[0].x, trail[0].y);
-        for (let t = 1; t < trail.length; t++) {
-          ctx.lineTo(trail[t].x, trail[t].y);
-        }
-        ctx.strokeStyle =
-          i === 1 ? 'rgba(239, 68, 68, 0.45)' :
-          i === 5 ? 'rgba(245, 158, 11, 0.45)' :
-          i === 3 ? 'rgba(168, 85, 247, 0.45)' :
-          'rgba(0, 240, 255, 0.55)';
-        ctx.lineWidth = 2;
-        ctx.shadowColor = i === 1 ? '#ef4444' : '#00f0ff';
-        ctx.shadowBlur = 10;
-        ctx.stroke();
-      });
-      ctx.restore();
-
-      // ----------------------------------------------------
-      // 4. UPDATE & DRAW KINETIC AMBIENT PARTICLES
-      // ----------------------------------------------------
-      ctx.save();
-      for (let pIdx = particlesRef.current.length - 1; pIdx >= 0; pIdx--) {
-        const p = particlesRef.current[pIdx];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life++;
-
-        const currentAlpha = p.alpha * (1 - p.life / p.maxLife);
-        if (p.life >= p.maxLife || currentAlpha <= 0) {
-          particlesRef.current.splice(pIdx, 1);
-          continue;
-        }
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = currentAlpha;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 6;
-        ctx.fill();
-      }
-      ctx.restore();
-
-      // Periodic floating energy motes spawn around central portrait
-      if (elapsed > 4.5 && Math.random() > 0.6) {
-        const pAngle = Math.random() * Math.PI * 2;
-        const pDist = 120 + Math.random() * 90;
-        particlesRef.current.push({
-          x: screenCenterX + Math.cos(pAngle) * pDist,
-          y: screenCenterY + Math.sin(pAngle) * pDist,
-          z: (Math.random() - 0.5) * 60,
-          vx: Math.cos(pAngle) * 0.8,
-          vy: Math.sin(pAngle) * 0.8,
-          vz: (Math.random() - 0.5) * 2,
-          color: Math.random() > 0.5 ? '#00f0ff' : '#f59e0b',
-          size: 1 + Math.random() * 2,
-          alpha: 0.8,
-          maxLife: 50 + Math.random() * 30,
-          life: 0,
         });
       }
 
-      animFrameRef.current = requestAnimationFrame(animate);
+      // ----------------------------------------------------
+      // LIFECYCLE STAGE 2: LETTER ORBIT (2.0s - 4.5s)
+      // Letters sweep across the desktop in wide 3D trajectories
+      // ----------------------------------------------------
+      else if (t >= 2.0 && t < 4.5) {
+        setLifecycle('LETTER_ORBIT');
+        const dt = t - 2.0;
+
+        lettersData.forEach((cfg, i) => {
+          const group = letterMeshes[i];
+          group.visible = true;
+          group.scale.set(1, 1, 1);
+
+          const angle = dt * cfg.orbitSpeed + cfg.orbitPhase;
+          const radius = cfg.orbitRadius;
+
+          const rawX = Math.cos(angle) * radius;
+          const rawY = Math.sin(angle) * (radius * 0.58);
+          // 3D inclination tilt
+          const posX = rawX;
+          const posY = rawY * Math.cos(cfg.orbitPitch) - Math.sin(angle) * 70 * Math.sin(cfg.orbitPitch);
+          const posZ = rawY * Math.sin(cfg.orbitPitch) + Math.sin(angle) * 120;
+
+          group.position.set(posX, posY, posZ);
+
+          group.rotation.x = dt * 1.2 * cfg.rotSpeedX;
+          group.rotation.y = dt * 1.5 * cfg.rotSpeedY;
+          group.rotation.z = dt * 0.8 * cfg.rotSpeedZ;
+        });
+      }
+
+      // ----------------------------------------------------
+      // LIFECYCLE STAGE 3: PORTRAIT REVEAL (4.5s - 6.5s)
+      // Portal materializes & letters converge to 3D title arc
+      // ----------------------------------------------------
+      else if (t >= 4.5 && t < 6.5) {
+        setLifecycle('PORTRAIT_REVEAL');
+        const pReveal = (t - 4.5) / 2.0;
+        const easeInOut =
+          pReveal < 0.5
+            ? 2 * pReveal * pReveal
+            : 1 - Math.pow(-2 * pReveal + 2, 2) / 2;
+
+        // Portal emerges
+        portalGroup.scale.setScalar(easeInOut);
+        portraitMat.opacity = easeInOut;
+
+        // Letters converge toward lower 3D title arrangement below portrait
+        lettersData.forEach((cfg, i) => {
+          const group = letterMeshes[i];
+          group.visible = true;
+          group.scale.set(1, 1, 1);
+
+          const dt = 2.5; // end of free flight
+          const angle = dt * cfg.orbitSpeed + cfg.orbitPhase;
+          const startX = Math.cos(angle) * cfg.orbitRadius;
+          const startY = Math.sin(angle) * (cfg.orbitRadius * 0.58);
+          const startZ = Math.sin(angle) * 100;
+
+          // Target panoramic arc across bottom
+          const letterSpacing = width < 768 ? 44 : 68;
+          const targetX = (i - 3) * letterSpacing;
+          const targetY = -145;
+          const targetZ = -Math.abs(i - 3) * 18 + 40;
+
+          group.position.x = startX + (targetX - startX) * easeInOut;
+          group.position.y = startY + (targetY - startY) * easeInOut;
+          group.position.z = startZ + (targetZ - startZ) * easeInOut;
+
+          // Rotate to face camera gracefully
+          const targetRotY = (i - 3) * -0.09;
+          group.rotation.x = (1 - easeInOut) * Math.PI;
+          group.rotation.y = targetRotY * easeInOut + (1 - easeInOut) * Math.PI * 2;
+          group.rotation.z = (1 - easeInOut) * 0.4;
+        });
+      }
+
+      // ----------------------------------------------------
+      // LIFECYCLE STAGE 4: ACTIVE PERSISTENT IDENTITY MODE (6.5s+)
+      // Portrait stays alive; letters orbit in 3D around it
+      // Periodic 10s cycle smoothly harmonizes into readable title!
+      // ----------------------------------------------------
+      else {
+        setLifecycle('ACTIVE');
+        portalGroup.scale.set(1, 1, 1);
+        portraitMat.opacity = 1;
+
+        const cycleTime = (t - 6.5) % 10.0;
+        // Periodic alignment: between 7.0s and 9.5s of every 10s cycle
+        let alignFactor = 0;
+        if (cycleTime > 6.8 && cycleTime < 9.6) {
+          if (cycleTime < 7.6) {
+            alignFactor = (cycleTime - 6.8) / 0.8;
+          } else if (cycleTime < 8.8) {
+            alignFactor = 1.0;
+          } else {
+            alignFactor = 1.0 - (cycleTime - 8.8) / 0.8;
+          }
+        }
+
+        lettersData.forEach((cfg, i) => {
+          const group = letterMeshes[i];
+          group.visible = true;
+          group.scale.set(1, 1, 1);
+
+          // 1. Orbital position
+          const orbitAngle = t * cfg.orbitSpeed + cfg.orbitPhase;
+          const rawX = Math.cos(orbitAngle) * cfg.orbitRadius;
+          const rawY = Math.sin(orbitAngle) * (cfg.orbitRadius * 0.58);
+          const orbitX = rawX;
+          const orbitY = rawY * Math.cos(cfg.orbitPitch) - Math.sin(orbitAngle) * 70 * Math.sin(cfg.orbitPitch);
+          const orbitZ = rawY * Math.sin(cfg.orbitPitch) + Math.sin(orbitAngle) * 120;
+
+          // 2. Aligned readable title position (panoramic arc below portrait)
+          const letterSpacing = width < 768 ? 44 : 68;
+          const alignedX = (i - 3) * letterSpacing;
+          const alignedY = -145;
+          const alignedZ = -Math.abs(i - 3) * 18 + 40;
+
+          // Smooth interpolation
+          group.position.x = orbitX * (1 - alignFactor) + alignedX * alignFactor;
+          group.position.y = orbitY * (1 - alignFactor) + alignedY * alignFactor;
+          group.position.z = orbitZ * (1 - alignFactor) + alignedZ * alignFactor;
+
+          // Individual tumble when orbiting, crisp front alignment when harmonized
+          const freeRotX = t * 0.9 * cfg.rotSpeedX;
+          const freeRotY = orbitAngle + t * 0.7 * cfg.rotSpeedY;
+          const freeRotZ = Math.sin(t + i) * 0.35;
+
+          const alignedRotX = 0;
+          const alignedRotY = (i - 3) * -0.09;
+          const alignedRotZ = 0;
+
+          group.rotation.x = freeRotX * (1 - alignFactor) + alignedRotX * alignFactor;
+          group.rotation.y = freeRotY * (1 - alignFactor) + alignedRotY * alignFactor;
+          group.rotation.z = freeRotZ * (1 - alignFactor) + alignedRotZ * alignFactor;
+        });
+      }
+
+      renderer.render(scene, camera);
+      animFrameId.current = requestAnimationFrame(render);
     };
 
-    animFrameRef.current = requestAnimationFrame(animate);
+    animFrameId.current = requestAnimationFrame(render);
 
+    // ----------------------------------------------------
+    // Cleanup / Disposal on Exit
+    // ----------------------------------------------------
     return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (animFrameId.current) {
+        cancelAnimationFrame(animFrameId.current);
+      }
       window.removeEventListener('resize', handleResize);
+
+      // Dispose Three.js scene, geometries, materials & textures
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach((m) => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        }
+      });
+      portraitTexture.dispose();
+      renderer.dispose();
     };
   }, [origin]);
 
   return (
     <div
+      ref={containerRef}
       className={`praveen-overlay ${isExiting ? 'exiting' : ''}`}
       onClick={(e) => {
-        // Clicking backdrop triggers exit
         if (e.target === e.currentTarget) {
           triggerExit();
         }
       }}
     >
-      {/* Background Kinetic Canvas */}
+      {/* Real-time WebGL Three.js Canvas */}
       <canvas ref={canvasRef} className="praveen-canvas" />
 
-      {/* Top HUD Telemetry Ribbon */}
+      {/* Top Futuristic Telemetry Ribbon */}
       <header className="praveen-top-hud">
         <div className="praveen-top-pill">
           <Fingerprint size={13} style={{ color: '#00f0ff' }} />
-          <span>STARK IDENTITY PROTOCOL // PRAVEEN 3D MATRIX</span>
+          <span>STARK IDENTITY SEQUENCE // SUBJECT: PRAVEEN</span>
         </div>
         <div className="praveen-top-pill" style={{ borderColor: 'rgba(245, 158, 11, 0.4)' }}>
           <Activity size={13} style={{ color: '#f59e0b' }} />
-          <span>PHASE: {hudPhase.toUpperCase()}</span>
+          <span>STAGE: {lifecycle}</span>
         </div>
         <div className="praveen-top-pill">
           <Cpu size={13} style={{ color: '#38bdf8' }} />
-          <span>CORE: QUANTUM EDITH V8.4</span>
+          <span>RENDER: REAL-TIME WEBGL 3D</span>
         </div>
       </header>
 
-      {/* 3D Scene Stage (Container for all 7 extruded letters) */}
-      <div className="praveen-scene-stage">
-        {LETTERS_CONFIG.map((cfg, idx) => (
-          <div
-            key={cfg.index}
-            ref={(el) => {
-              letterRefs.current[idx] = el;
-            }}
-            className={`praveen-3d-letter ${cfg.matClass}`}
-            style={{ opacity: 0 }}
-          >
-            <div className="letter-3d-wrapper">
-              {/* Back Face Shadow Layer */}
-              <div
-                className="letter-slice letter-back"
-                style={{ transform: 'translateZ(-14px)' }}
-              >
-                {cfg.char}
-              </div>
-
-              {/* 3D Extrusion Depth Slices */}
-              <div
-                className="letter-slice letter-slice-depth"
-                style={{ transform: 'translateZ(-10px)' }}
-              >
-                {cfg.char}
-              </div>
-              <div
-                className="letter-slice letter-slice-depth"
-                style={{ transform: 'translateZ(-6px)' }}
-              >
-                {cfg.char}
-              </div>
-              <div
-                className="letter-slice letter-slice-depth"
-                style={{ transform: 'translateZ(-2px)' }}
-              >
-                {cfg.char}
-              </div>
-              <div
-                className="letter-slice letter-slice-depth"
-                style={{ transform: 'translateZ(2px)' }}
-              >
-                {cfg.char}
-              </div>
-              <div
-                className="letter-slice letter-slice-depth"
-                style={{ transform: 'translateZ(6px)' }}
-              >
-                {cfg.char}
-              </div>
-
-              {/* Front Face with Distinct Material Shader */}
-              <div
-                className="letter-slice letter-front"
-                style={{ transform: 'translateZ(10px)' }}
-              >
-                {cfg.char}
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {/* Central Identity Holographic Medallion & Portrait */}
+      {/* Biometric Scan Telemetry Overlay Under Portrait */}
+      {(lifecycle === 'PORTRAIT_REVEAL' || lifecycle === 'ACTIVE') && (
         <div
-          className="praveen-portrait-anchor"
           style={{
-            opacity: portraitOpacity,
-            transform: `translate(-50%, -50%) scale(${0.7 + portraitOpacity * 0.3})`,
-            transition: 'transform 0.4s ease-out',
+            position: 'absolute',
+            top: 'calc(50% + 140px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px',
+            fontFamily: 'var(--font-hud)',
+            fontSize: '0.74rem',
+            letterSpacing: '0.12em',
+            color: '#00f0ff',
+            textShadow: '0 0 10px rgba(0, 240, 255, 0.8)',
+            background: 'rgba(3, 8, 24, 0.88)',
+            padding: '6px 20px',
+            borderRadius: '6px',
+            border: '1px solid rgba(0, 240, 255, 0.45)',
+            boxShadow: '0 0 20px rgba(0, 240, 255, 0.25)',
+            pointerEvents: 'none',
+            animation: 'praveenFadeIn 0.8s ease-out forwards',
           }}
         >
-          <div className="portrait-medallion-container">
-            {/* Concentric Rotating HUD Reticles */}
-            <div className="hud-reticle-outer" />
-            <div className="hud-reticle-mid" />
-            <div className="hud-reticle-inner" />
-
-            {/* Glowing Hexagonal / Circular Shield containing the real photo */}
-            <div className="portrait-shield">
-              {/* Laser Scanner Bar */}
-              <div className="portrait-laser-sweep" />
-
-              <img
-                src="/images/praveen-identity.jpg"
-                alt="Praveen - Iron Spider Identity"
-                className="portrait-image"
-                onLoad={() => setPortraitLoaded(true)}
-                onError={(e) => {
-                  console.warn('Portrait image load fallback:', e);
-                  // Fallback: If image fails, keep readable placeholder
-                  e.currentTarget.src = '/icon-512.png';
-                }}
-              />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Shield size={12} style={{ color: '#00f0ff' }} />
+            <span>SUBJECT: PRAVEEN // CLEARANCE: LEVEL 10</span>
           </div>
-
-          {/* Biometric Telemetry Badge Below Portrait */}
-          <div className="portrait-telemetry-badge">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Shield size={12} style={{ color: '#00f0ff' }} />
-              <span>SUBJECT: PRAVEEN // CLEARANCE: LEVEL 10</span>
-            </div>
-            <div className="portrait-telemetry-sub">
-              BIOMETRIC SCAN: VERIFIED // SUIT: IRON SPIDER MK-IV
-            </div>
+          <div style={{ fontSize: '0.64rem', color: '#94a3b8', letterSpacing: '0.08em' }}>
+            BIOMETRIC SCAN: VERIFIED // SUIT: IRON SPIDER MK-IV
           </div>
         </div>
-      </div>
+      )}
 
       {/* Exit HUD Pill at Bottom Center */}
       <footer className="praveen-exit-hud">
